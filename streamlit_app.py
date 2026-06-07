@@ -34,7 +34,6 @@ def connect_sheet():
     )
 
     client = gspread.authorize(creds)
-
     sheet = client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
 
     return sheet
@@ -56,12 +55,29 @@ def load_data():
         if col not in df.columns:
             df[col] = None
 
-    df["Payment Date"] = pd.to_datetime(df["Payment Date"], errors="coerce")
-    df["Bill Amount"] = pd.to_numeric(df["Bill Amount"], errors="coerce").fillna(0)
-    df["TDS"] = pd.to_numeric(df["TDS"], errors="coerce").fillna(0)
-    df["Net Amount"] = pd.to_numeric(df["Net Amount"], errors="coerce").fillna(0)
+    df = df[COLUMNS]
 
-    return df[COLUMNS]
+    df["Payment Date"] = pd.to_datetime(
+        df["Payment Date"],
+        errors="coerce"
+    )
+
+    df["Bill Amount"] = pd.to_numeric(
+        df["Bill Amount"],
+        errors="coerce"
+    ).fillna(0)
+
+    df["TDS"] = pd.to_numeric(
+        df["TDS"],
+        errors="coerce"
+    ).fillna(0)
+
+    df["Net Amount"] = pd.to_numeric(
+        df["Net Amount"],
+        errors="coerce"
+    ).fillna(0)
+
+    return df
 
 
 df = load_data()
@@ -97,7 +113,10 @@ with col3:
     cheque_no = st.text_input("Cheque No.")
 
 with col4:
-    payment_date = st.date_input("Payment Date", value=date.today())
+    payment_date = st.date_input(
+        "Payment Date",
+        value=date.today()
+    )
 
 col5, col6, col7 = st.columns(3)
 
@@ -150,41 +169,39 @@ st.divider()
 # -----------------------------
 st.subheader("Filter Payments")
 
-col1, col2, col3 = st.columns(3)
+col8, col9, col10 = st.columns(3)
 
-with col1:
+with col8:
     selected_payers = st.multiselect(
         "Select Payer(s)",
         payer_list,
         default=payer_list
     )
 
-with col2:
+with col9:
     from_date = st.date_input(
         "From Date",
         value=date.today().replace(day=1)
     )
 
-with col3:
+with col10:
     to_date = st.date_input(
         "To Date",
         value=date.today()
     )
 
+
 if not df.empty:
+    from_date_ts = pd.Timestamp(from_date)
+    to_date_ts = pd.Timestamp(to_date)
 
-    mask = (
-        df["Payer"].isin(selected_payers)
-        &
-        (df["Payment Date"] >= pd.Timestamp(from_date))
-        &
-        (df["Payment Date"] <= pd.Timestamp(to_date))
-    )
-
-    filtered_df = df.loc[mask].copy()
-
+    filtered_df = df[
+        (df["Payer"].isin(selected_payers)) &
+        (df["Payment Date"] >= from_date_ts) &
+        (df["Payment Date"] <= to_date_ts)
+    ].copy()
 else:
-    filtered_df = pd.DataFrame(columns=df.columns)
+    filtered_df = pd.DataFrame(columns=COLUMNS)
 
 
 # -----------------------------
@@ -245,7 +262,11 @@ def convert_to_excel(dataframe):
     output = BytesIO()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        dataframe.to_excel(writer, index=False, sheet_name="Payments")
+        dataframe.to_excel(
+            writer,
+            index=False,
+            sheet_name="Payments"
+        )
 
     return output.getvalue()
 
