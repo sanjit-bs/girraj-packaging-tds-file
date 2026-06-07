@@ -16,6 +16,7 @@ SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
 WORKSHEET_NAME = "Tds_file"
 
 COLUMNS = [
+    "Financial Year",
     "Month",
     "Payment Date",
     "Cheque No",
@@ -32,11 +33,8 @@ def connect_sheet():
         st.secrets["gcp_service_account"],
         scopes=SCOPES
     )
-
     client = gspread.authorize(creds)
-    sheet = client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
-
-    return sheet
+    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
 
 
 sheet = connect_sheet()
@@ -57,25 +55,14 @@ def load_data():
 
     df = df[COLUMNS]
 
-    df["Payment Date"] = pd.to_datetime(
-        df["Payment Date"],
-        errors="coerce"
-    )
+    df["Payment Date"] = pd.to_datetime(df["Payment Date"], errors="coerce")
+    df["Bill Amount"] = pd.to_numeric(df["Bill Amount"], errors="coerce").fillna(0)
+    df["TDS"] = pd.to_numeric(df["TDS"], errors="coerce").fillna(0)
+    df["Net Amount"] = pd.to_numeric(df["Net Amount"], errors="coerce").fillna(0)
 
-    df["Bill Amount"] = pd.to_numeric(
-        df["Bill Amount"],
-        errors="coerce"
-    ).fillna(0)
-
-    df["TDS"] = pd.to_numeric(
-        df["TDS"],
-        errors="coerce"
-    ).fillna(0)
-
-    df["Net Amount"] = pd.to_numeric(
-        df["Net Amount"],
-        errors="coerce"
-    ).fillna(0)
+    df["Financial Year"] = df["Financial Year"].astype(str).str.strip()
+    df["Month"] = df["Month"].astype(str).str.strip()
+    df["Payer"] = df["Payer"].astype(str).str.strip()
 
     return df
 
@@ -91,17 +78,40 @@ payer_list = [
     "DEBABRATA BISWAS"
 ]
 
-# -----------------------------
-# Entry Section
-# -----------------------------
+financial_year_list = [
+    "2024-2025",
+    "2025-2026",
+    "2026-2027",
+    "2027-2028"
+]
+
+month_list = [
+    "April", "May", "June", "July", "August", "September",
+    "October", "November", "December", "January", "February", "March"
+]
+
 st.subheader("New Payment Entry")
 
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
-    payer = st.selectbox("Select Payer", payer_list)
+    financial_year = st.selectbox("Financial Year", financial_year_list)
 
 with col2:
+    month = st.selectbox("Month", month_list)
+
+with col3:
+    payer = st.selectbox("Select Payer", payer_list)
+
+with col4:
+    payment_date = st.date_input("Payment Date", value=date.today())
+
+col5, col6, col7, col8 = st.columns(4)
+
+with col5:
+    cheque_no = st.text_input("Cheque No.")
+
+with col6:
     bill_amount = st.number_input(
         "Bill Amount",
         min_value=0.0,
@@ -109,25 +119,11 @@ with col2:
         format="%.2f"
     )
 
-with col3:
-    cheque_no = st.text_input("Cheque No.")
-
-with col4:
-    payment_date = st.date_input(
-        "Payment Date",
-        value=date.today()
-    )
-
-col5, col6, col7 = st.columns(3)
-
-with col5:
-    month = st.text_input("Month")
-
 tds_percent = 1
 tds_amount = bill_amount * tds_percent / 100
 net_amount = bill_amount - tds_amount
 
-with col6:
+with col7:
     st.number_input(
         "TDS Amount 1%",
         value=float(tds_amount),
@@ -135,7 +131,7 @@ with col6:
         format="%.2f"
     )
 
-with col7:
+with col8:
     st.number_input(
         "Net Amount",
         value=float(net_amount),
@@ -147,6 +143,7 @@ with col7:
 if st.button("Submit Payment"):
     if bill_amount > 0:
         sheet.append_row([
+            financial_year,
             month,
             payment_date.strftime("%Y-%m-%d"),
             cheque_no,
@@ -164,49 +161,42 @@ if st.button("Submit Payment"):
 
 st.divider()
 
-# -----------------------------
-# Filter Section
-# -----------------------------
 st.subheader("Filter Payments")
 
-col8, col9, col10 = st.columns(3)
+col9, col10, col11 = st.columns(3)
 
-with col8:
+with col9:
+    selected_financial_years = st.multiselect(
+        "Select Financial Year",
+        financial_year_list,
+        default=financial_year_list
+    )
+
+with col10:
+    selected_months = st.multiselect(
+        "Select Month",
+        month_list,
+        default=month_list
+    )
+
+with col11:
     selected_payers = st.multiselect(
         "Select Payer(s)",
         payer_list,
         default=payer_list
     )
 
-with col9:
-    from_date = st.date_input(
-        "From Date",
-        value=date.today().replace(day=1)
-    )
-
-with col10:
-    to_date = st.date_input(
-        "To Date",
-        value=date.today()
-    )
-
 
 if not df.empty:
-    from_date_ts = pd.Timestamp(from_date)
-    to_date_ts = pd.Timestamp(to_date)
-
     filtered_df = df[
-        (df["Payer"].isin(selected_payers)) &
-        (df["Payment Date"] >= from_date_ts) &
-        (df["Payment Date"] <= to_date_ts)
+        (df["Financial Year"].isin(selected_financial_years)) &
+        (df["Month"].isin(selected_months)) &
+        (df["Payer"].isin(selected_payers))
     ].copy()
 else:
     filtered_df = pd.DataFrame(columns=COLUMNS)
 
 
-# -----------------------------
-# Summary Section
-# -----------------------------
 st.subheader("Summary")
 
 total_bill_amount = filtered_df["Bill Amount"].sum()
@@ -214,24 +204,21 @@ total_tds = filtered_df["TDS"].sum()
 total_net_amount = filtered_df["Net Amount"].sum()
 total_transactions = len(filtered_df)
 
-col11, col12, col13, col14 = st.columns(4)
-
-with col11:
-    st.metric("Total Bill Amount", f"₹{total_bill_amount:,.2f}")
+col12, col13, col14, col15 = st.columns(4)
 
 with col12:
-    st.metric("Total TDS", f"₹{total_tds:,.2f}")
+    st.metric("Total Bill Amount", f"₹{total_bill_amount:,.2f}")
 
 with col13:
-    st.metric("Total Net Amount", f"₹{total_net_amount:,.2f}")
+    st.metric("Total TDS", f"₹{total_tds:,.2f}")
 
 with col14:
+    st.metric("Total Net Amount", f"₹{total_net_amount:,.2f}")
+
+with col15:
     st.metric("Total Transactions", total_transactions)
 
 
-# -----------------------------
-# Payer Wise Summary
-# -----------------------------
 st.subheader("Payer-wise Total")
 
 if not filtered_df.empty:
@@ -248,25 +235,15 @@ else:
     st.info("No data found for selected filter.")
 
 
-# -----------------------------
-# Transaction Table
-# -----------------------------
 st.subheader("Transaction Records")
 st.dataframe(filtered_df, width="stretch")
 
 
-# -----------------------------
-# Excel Download
-# -----------------------------
 def convert_to_excel(dataframe):
     output = BytesIO()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        dataframe.to_excel(
-            writer,
-            index=False,
-            sheet_name="Payments"
-        )
+        dataframe.to_excel(writer, index=False, sheet_name="Payments")
 
     return output.getvalue()
 
