@@ -143,13 +143,13 @@ if not filtered_df.empty:
         .sort_values("Amount", ascending=False)
     )
 
-    st.dataframe(payer_summary, width="stretch")
+    st.dataframe(payer_summary, width=True)
 else:
     st.info("No data found for selected filter.")
 
 
 st.subheader("Transaction Records")
-st.dataframe(filtered_df, width="stretch")
+st.dataframe(filtered_df, width=True)
 
 
 def convert_to_excel(dataframe):
