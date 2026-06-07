@@ -163,39 +163,42 @@ st.divider()
 
 st.subheader("Filter Payments")
 
+# Make dropdown values from actual sheet data
+available_years = sorted(df["Financial Year"].dropna().astype(str).str.strip().unique())
+available_months = sorted(df["Month"].dropna().astype(str).str.strip().unique())
+available_payers = sorted(df["Payer"].dropna().astype(str).str.strip().unique())
+
 col9, col10, col11 = st.columns(3)
 
 with col9:
     selected_financial_years = st.multiselect(
         "Select Financial Year",
-        financial_year_list,
-        default=financial_year_list
+        available_years,
+        default=available_years
     )
 
 with col10:
     selected_months = st.multiselect(
         "Select Month",
-        month_list,
-        default=month_list
+        available_months,
+        default=available_months
     )
 
 with col11:
     selected_payers = st.multiselect(
         "Select Payer(s)",
-        payer_list,
-        default=payer_list
+        available_payers,
+        default=available_payers
     )
-
 
 if not df.empty:
     filtered_df = df[
-        (df["Financial Year"].isin(selected_financial_years)) &
-        (df["Month"].isin(selected_months)) &
-        (df["Payer"].isin(selected_payers))
+        (df["Financial Year"].astype(str).str.strip().isin(selected_financial_years)) &
+        (df["Month"].astype(str).str.strip().isin(selected_months)) &
+        (df["Payer"].astype(str).str.strip().isin(selected_payers))
     ].copy()
 else:
     filtered_df = pd.DataFrame(columns=COLUMNS)
-
 
 st.subheader("Summary")
 
