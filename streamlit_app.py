@@ -75,7 +75,7 @@ with col3:
     payment_date = st.date_input("Payment Date", value=date.today())
 
 with col4:
-    month = st.str_input("Bill ammout",
+    month = st.string_input("Bill ammout",
                          format="%.2f"
                         )
 
