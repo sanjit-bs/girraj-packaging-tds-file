@@ -58,7 +58,7 @@ payer_list = [
 
 st.subheader("New Payment Entry")
 
-col1, col2, col3, col4 = st.columns(5)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     payer = st.selectbox("Select Payer", payer_list)
