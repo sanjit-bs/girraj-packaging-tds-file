@@ -6,7 +6,8 @@ from io import BytesIO
 from datetime import date
 
 st.set_page_config(page_title="GIRRAJ PACKAGING", layout="wide")
-
+st.write(type(st.secrets["gcp_service_account"]["private_key"]))
+st.write(st.secrets["gcp_service_account"]["private_key"][:30])
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
