@@ -58,23 +58,33 @@ payer_list = [
 
 st.subheader("New Payment Entry")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5, col6, col7 = st.columns(7)
 
 with col1:
     payer = st.selectbox("Select Payer", payer_list)
 
 with col2:
     amount = st.number_input(
-        "Bill ammout",
+        "Bill amout",
         min_value=0.0,
         step=0.5,
         format="%.2f"
     )
 
 with col3:
-    payment_date = st.date_input("Payment Date", value=date.today())
+    tds = "1%"
 
 with col4:
+    net_amount = "net_amount"
+
+with col5:
+    cheque_no = st.int_input(
+        "Cheque No.")
+
+with col6:
+    payment_date = st.date_input("Payment Date", value=date.today())
+
+with col7:
     month = st.text_input("Month")
 
 
@@ -83,6 +93,10 @@ if st.button("Submit Payment"):
         sheet.append_row([
             month,
             payment_date.strftime("%Y-%m-%d"),
+            cheque_no,
+            amount,
+            tds,
+            net_amount,
             payer,
             float(amount)
         ])
