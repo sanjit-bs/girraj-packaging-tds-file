@@ -7,31 +7,30 @@ from datetime import date
 
 st.set_page_config(page_title="GIRRAJ PACKAGING", layout="wide")
 
-# -----------------------------
-# Google Sheet Connection
-# -----------------------------
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
     "https://www.googleapis.com/auth/drive"
 ]
 
+@st.cache_resource
+def connect_sheet():
     creds = Credentials.from_service_account_info(
-    st.secrets["gcp_service_account"],
-    scopes=SCOPES
+        st.secrets["gcp_service_account"],
+        scopes=SCOPES
     )
+
     client = gspread.authorize(creds)
 
-    # Change this name to your Google Sheet name
-    sheet = client.open("1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg").worksheet("Tds_file")
+    sheet = client.open_by_key(
+        "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
+    ).worksheet("Tds_file")
+
     return sheet
 
 
 sheet = connect_sheet()
 
 
-# -----------------------------
-# Load Data
-# -----------------------------
 def load_data():
     records = sheet.get_all_records()
 
@@ -48,25 +47,15 @@ def load_data():
 
 df = load_data()
 
+st.title("GIRRAJ PACKAGING")
+st.subheader("Payment Entry and Dashboard")
 
-# -----------------------------
-# Title
-# -----------------------------
-st.title("Payment Entry and Dashboard")
-
-
-# -----------------------------
-# Payer List
-# -----------------------------
 payer_list = [
     "PILU MRIDHA",
     "TOTON SARKAR",
     "DEBABRATA BISWAS"
 ]
 
-# -----------------------------
-# Entry Section
-# -----------------------------
 st.subheader("New Payment Entry")
 
 col1, col2, col3 = st.columns(3)
@@ -95,6 +84,7 @@ if st.button("Submit Payment"):
         ])
 
         st.success("Payment saved successfully.")
+        st.cache_data.clear()
         st.rerun()
     else:
         st.warning("Please enter amount greater than 0.")
@@ -102,10 +92,6 @@ if st.button("Submit Payment"):
 
 st.divider()
 
-
-# -----------------------------
-# Filter Section
-# -----------------------------
 st.subheader("Filter Payments")
 
 col4, col5, col6 = st.columns(3)
@@ -134,9 +120,6 @@ else:
     filtered_df = pd.DataFrame(columns=["Date", "Payer", "Amount"])
 
 
-# -----------------------------
-# Summary Section
-# -----------------------------
 st.subheader("Summary")
 
 total_amount = filtered_df["Amount"].sum()
@@ -151,9 +134,6 @@ with col8:
     st.metric("Total Transactions", total_transactions)
 
 
-# -----------------------------
-# Payer Wise Summary
-# -----------------------------
 st.subheader("Payer-wise Total")
 
 if not filtered_df.empty:
@@ -168,17 +148,10 @@ else:
     st.info("No data found for selected filter.")
 
 
-# -----------------------------
-# Transaction Table
-# -----------------------------
 st.subheader("Transaction Records")
-
 st.dataframe(filtered_df, use_container_width=True)
 
 
-# -----------------------------
-# Excel Download
-# -----------------------------
 def convert_to_excel(dataframe):
     output = BytesIO()
 
