@@ -35,11 +35,11 @@ def load_data():
     records = sheet.get_all_records()
 
     if not records:
-        return pd.DataFrame(columns=["Date", "Payer", "Amount"])
+        return pd.DataFrame(columns=["Payment Date", "Payer", "Amount"])
 
     df = pd.DataFrame(records)
 
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df["Payment Date"] = pd.to_datetime(df["Payment Date"], errors="coerce")
     df["Amount"] = pd.to_numeric(df["Amount"], errors="coerce").fillna(0)
 
     return df
@@ -131,8 +131,8 @@ with col6:
 if not df.empty:
     filtered_df = df[
         (df["Payer"].isin(selected_payers)) &
-        (df["Date"].dt.date >= from_date) &
-        (df["Date"].dt.date <= to_date)
+        (df["Payment Date"].dt.date >= from_date) &
+        (df["Payment Date"].dt.date <= to_date)
     ]
 else:
     filtered_df = pd.DataFrame(columns=["Payment Date", "Payer", "Amount"])
