@@ -58,14 +58,14 @@ payer_list = [
 
 st.subheader("New Payment Entry")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(5)
 
 with col1:
     payer = st.selectbox("Select Payer", payer_list)
 
 with col2:
     amount = st.number_input(
-        "Amount Paid",
+        "Bill ammout",
         min_value=0.0,
         step=0.5,
         format="%.2f"
@@ -74,10 +74,16 @@ with col2:
 with col3:
     payment_date = st.date_input("Payment Date", value=date.today())
 
+with col4:
+    month = st.str_input("Bill ammout",
+                         format="%.2f"
+                        )
+
 
 if st.button("Submit Payment"):
     if amount > 0:
         sheet.append_row([
+            month,
             payment_date.strftime("%Y-%m-%d"),
             payer,
             float(amount)
