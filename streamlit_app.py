@@ -150,30 +150,41 @@ st.divider()
 # -----------------------------
 st.subheader("Filter Payments")
 
-col8, col9, col10 = st.columns(3)
+col1, col2, col3 = st.columns(3)
 
-with col8:
+with col1:
     selected_payers = st.multiselect(
         "Select Payer(s)",
         payer_list,
         default=payer_list
     )
 
-with col9:
-    from_date = st.date_input("From Date", value=date.today().replace(day=1))
+with col2:
+    from_date = st.date_input(
+        "From Date",
+        value=date.today().replace(day=1)
+    )
 
-with col10:
-    to_date = st.date_input("To Date", value=date.today())
-
+with col3:
+    to_date = st.date_input(
+        "To Date",
+        value=date.today()
+    )
 
 if not df.empty:
-    filtered_df = df[
-        (df["Payer"].isin(selected_payers)) &
-        (df["Payment Date"].dt.date >= from_date) &
-        (df["Payment Date"].dt.date <= to_date)
-    ]
+
+    mask = (
+        df["Payer"].isin(selected_payers)
+        &
+        (df["Payment Date"] >= pd.Timestamp(from_date))
+        &
+        (df["Payment Date"] <= pd.Timestamp(to_date))
+    )
+
+    filtered_df = df.loc[mask].copy()
+
 else:
-    filtered_df = pd.DataFrame(columns=COLUMNS)
+    filtered_df = pd.DataFrame(columns=df.columns)
 
 
 # -----------------------------
