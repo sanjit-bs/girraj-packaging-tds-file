@@ -78,7 +78,7 @@ with col4:
     net_amount = "net_amount"
 
 with col5:
-    cheque_no = st.int_input(
+    cheque_no = st.number_input(
         "Cheque No.")
 
 with col6:
