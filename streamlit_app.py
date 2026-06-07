@@ -75,7 +75,7 @@ with col3:
     payment_date = st.date_input("Payment Date", value=date.today())
 
 with col4:
-    month = st.text_input("Bill ammout")
+    month = st.text_input("Month")
 
 
 if st.button("Submit Payment"):
