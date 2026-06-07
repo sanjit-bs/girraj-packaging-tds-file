@@ -135,7 +135,7 @@ if not df.empty:
         (df["Date"].dt.date <= to_date)
     ]
 else:
-    filtered_df = pd.DataFrame(columns=["Date", "Payer", "Amount"])
+    filtered_df = pd.DataFrame(columns=["Payment Date", "Payer", "Amount"])
 
 
 st.subheader("Summary")
