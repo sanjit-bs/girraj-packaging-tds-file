@@ -145,7 +145,7 @@ if st.button("Submit Payment"):
         sheet.append_row([
             financial_year,
             month,
-            payment_date.strftime("%Y-%m-%d"),
+            payment_date.strftime("%d/%m/%Y"),
             cheque_no,
             float(bill_amount),
             float(tds_amount),
