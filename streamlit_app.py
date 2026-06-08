@@ -23,7 +23,7 @@ COLUMNS = [
     "Bill Amount",
     "TDS",
     "Net Amount",
-    "Payer"
+    "Payee"
 ]
 
 
@@ -62,7 +62,7 @@ def load_data():
 
     df["Financial Year"] = df["Financial Year"].astype(str).str.strip()
     df["Month"] = df["Month"].astype(str).str.strip()
-    df["Payer"] = df["Payer"].astype(str).str.strip()
+    df["Payee"] = df["Payee"].astype(str).str.strip()
 
     return df
 
@@ -72,7 +72,7 @@ df = load_data()
 st.title("GIRRAJ PACKAGING")
 st.subheader("Payment Entry and Dashboard")
 
-payer_list = [
+Payee_list = [
     "PILU MRIDHA",
     "TOTON SARKAR",
     "DEBABRATA BISWAS"
@@ -101,7 +101,7 @@ with col2:
     month = st.selectbox("Month", month_list)
 
 with col3:
-    payer = st.selectbox("Select Payer", payer_list)
+    Payee = st.selectbox("Select Payee", Payee_list)
 
 with col4:
     payment_date = st.date_input("Payment Date", value=date.today())
@@ -150,7 +150,7 @@ if st.button("Submit Payment"):
             float(bill_amount),
             float(tds_amount),
             float(net_amount),
-            payer
+            Payee
         ])
 
         st.success("Payment saved successfully.")
@@ -166,7 +166,7 @@ st.subheader("Filter Payments")
 # Make dropdown values from actual sheet data
 available_years = sorted(df["Financial Year"].dropna().astype(str).str.strip().unique())
 available_months = sorted(df["Month"].dropna().astype(str).str.strip().unique())
-available_payers = sorted(df["Payer"].dropna().astype(str).str.strip().unique())
+available_Payees = sorted(df["Payee"].dropna().astype(str).str.strip().unique())
 
 col9, col10, col11 = st.columns(3)
 
@@ -185,17 +185,17 @@ with col10:
     )
 
 with col11:
-    selected_payers = st.multiselect(
-        "Select Payer(s)",
-        available_payers,
-        default=available_payers
+    selected_Payees = st.multiselect(
+        "Select Payee(s)",
+        available_Payees,
+        default=available_Payees
     )
 
 if not df.empty:
     filtered_df = df[
         (df["Financial Year"].astype(str).str.strip().isin(selected_financial_years)) &
         (df["Month"].astype(str).str.strip().isin(selected_months)) &
-        (df["Payer"].astype(str).str.strip().isin(selected_payers))
+        (df["Payee"].astype(str).str.strip().isin(selected_Payees))
     ].copy()
 else:
     filtered_df = pd.DataFrame(columns=COLUMNS)
@@ -222,18 +222,18 @@ with col15:
     st.metric("Total Transactions", total_transactions)
 
 
-st.subheader("Payer-wise Total")
+st.subheader("Payee-wise Total")
 
 if not filtered_df.empty:
-    payer_summary = (
-        filtered_df.groupby("Payer", as_index=False)[
+    Payee_summary = (
+        filtered_df.groupby("Payee", as_index=False)[
             ["Bill Amount", "TDS", "Net Amount"]
         ]
         .sum()
         .sort_values("Net Amount", ascending=False)
     )
 
-    st.dataframe(payer_summary, width="stretch")
+    st.dataframe(Payee_summary, width="stretch")
 else:
     st.info("No data found for selected filter.")
 
