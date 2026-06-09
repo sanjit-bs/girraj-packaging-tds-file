@@ -109,22 +109,28 @@ payer_list = [
 # -----------------------------
 st.subheader("New Payment Entry")
 
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
+
+key_suffix = st.session_state.form_key
+
 col_date, col_month, col_fy = st.columns(3)
 
 with col_date:
     payment_date = st.date_input(
         "Payment Date *",
-        key="payment_date_live"
+        value=date.today(),
+        key=f"payment_date_{key_suffix}"
     )
 
 month = payment_date.strftime("%B")
 financial_year = get_financial_year(payment_date)
 
 with col_month:
-    st.text_input("Month", value=month, disabled=True)
+    st.text_input("Month", value=month, disabled=True, key=f"month_{key_suffix}")
 
 with col_fy:
-    st.text_input("Financial Year", value=financial_year, disabled=True)
+    st.text_input("Financial Year", value=financial_year, disabled=True, key=f"fy_{key_suffix}")
 
 
 col_bill, col_tds, col_net = st.columns(3)
@@ -135,28 +141,25 @@ with col_bill:
         min_value=0.0,
         step=0.5,
         format="%.2f",
-        key="bill_amount_live"
+        key=f"bill_amount_{key_suffix}"
     )
 
 tds_amount = bill_amount * 0.01
 net_amount = bill_amount - tds_amount
 
 with col_tds:
-    st.text_input("TDS Amount 1%", value=f"{tds_amount:.2f}", disabled=True)
+    st.text_input("TDS Amount 1%", value=f"{tds_amount:.2f}", disabled=True, key=f"tds_{key_suffix}")
 
 with col_net:
-    st.text_input("Net Amount", value=f"{net_amount:.2f}", disabled=True)
+    st.text_input("Net Amount", value=f"{net_amount:.2f}", disabled=True, key=f"net_{key_suffix}")
 
 
-with st.form("payment_form", clear_on_submit=True):
+with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
 
     col1, col2 = st.columns(2)
 
     with col1:
-        payer = st.selectbox(
-            "Select Payee *",
-            [""] + payer_list
-        )
+        payer = st.selectbox("Select Payee *", [""] + payer_list)
 
     with col2:
         cheque_no = st.text_input("Cheque No. *")
@@ -164,16 +167,12 @@ with st.form("payment_form", clear_on_submit=True):
     submitted = st.form_submit_button("Submit Payment")
 
     if submitted:
-
         if payer == "":
             st.warning("Please select a payee.")
-
         elif cheque_no.strip() == "":
             st.warning("Please enter cheque number.")
-
         elif bill_amount <= 0:
             st.warning("Please enter bill amount greater than 0.")
-
         else:
             sheet.append_row([
                 financial_year,
@@ -187,6 +186,7 @@ with st.form("payment_form", clear_on_submit=True):
             ])
 
             st.session_state.submit_success = True
+            st.session_state.form_key += 1
             st.rerun()
 
 
