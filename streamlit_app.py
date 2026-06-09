@@ -42,11 +42,9 @@ sheet = connect_sheet()
 
 def get_financial_year(payment_date):
     year = payment_date.year
-
     if payment_date.month >= 4:
         return f"{year}-{year + 1}"
-    else:
-        return f"{year - 1}-{year}"
+    return f"{year - 1}-{year}"
 
 
 def load_data():
@@ -92,6 +90,9 @@ Payee_list = [
     "DEBABRATA BISWAS"
 ]
 
+# -----------------------------
+# New Payment Entry
+# -----------------------------
 st.subheader("New Payment Entry")
 
 col_date, col_month, col_fy = st.columns(3)
@@ -126,7 +127,7 @@ with st.form("payment_form", clear_on_submit=True):
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
-        payer = st.selectbox("Select Payee", payer_list)
+        Payee = st.selectbox("Select Payee", Payee_list)
 
     with col2:
         cheque_no = st.text_input("Cheque No.")
@@ -169,7 +170,7 @@ with st.form("payment_form", clear_on_submit=True):
                 float(bill_amount),
                 float(tds_amount),
                 float(net_amount),
-                payer
+                Payee
             ])
 
             st.success("✅ Record submitted successfully")
@@ -177,6 +178,7 @@ with st.form("payment_form", clear_on_submit=True):
             st.rerun()
         else:
             st.warning("Please enter bill amount greater than 0.")
+
 
 st.divider()
 
@@ -251,9 +253,6 @@ with col15:
     st.metric("Total Transactions", total_transactions)
 
 
-# -----------------------------
-# Payee Wise Summary
-# -----------------------------
 st.subheader("Payee-wise Total")
 
 if not filtered_df.empty:
@@ -270,9 +269,6 @@ else:
     st.info("No data found for selected filter.")
 
 
-# -----------------------------
-# Transaction Table
-# -----------------------------
 st.subheader("Transaction Records")
 
 display_df = filtered_df.copy()
@@ -283,12 +279,8 @@ if not display_df.empty:
 st.dataframe(display_df, width="stretch")
 
 
-# -----------------------------
-# Excel Download
-# -----------------------------
 def convert_to_excel(dataframe):
     output = BytesIO()
-
     excel_df = dataframe.copy()
 
     if not excel_df.empty:
