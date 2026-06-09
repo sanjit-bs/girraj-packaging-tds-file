@@ -187,8 +187,6 @@ with st.form("payment_form", clear_on_submit=True):
             ])
 
             st.session_state.submit_success = True
-            st.session_state.bill_amount_live = 0.0
-            st.session_state.payment_date_live = date.today()
             st.rerun()
 
 
