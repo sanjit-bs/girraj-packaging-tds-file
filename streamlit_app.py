@@ -107,34 +107,28 @@ with st.form("payment_form", clear_on_submit=True):
             value=date.today()
         )
 
-    # month = payment_date.strftime("%B")
-    # financial_year = get_financial_year(payment_date)
-
-    # with col3:
-    #     st.text_input(
-    #         "Month",
-    #         value=month,
-    #         disabled=True
-    #     )
-
-    # with col4:
-    #     st.text_input(
-    #         "Financial Year",
-    #         value=financial_year,
-    #         disabled=True
-    #     )
-
     month = payment_date.strftime("%B")
+    financial_year = get_financial_year(payment_date)
 
-    year = payment_date.year
+    with col3:
+        st.write("Month")
+        st.info(month)
 
-    if payment_date.month >= 4:
-        financial_year = f"{year}-{year+1}"
-    else:
-        financial_year = f"{year-1}-{year}"
+    with col4:
+        st.write("Financial Year")
+        st.info(financial_year)
 
-    col3.metric("Month", month)
-    col4.metric("Financial Year", financial_year)
+    # month = payment_date.strftime("%B")
+
+    # year = payment_date.year
+
+    # if payment_date.month >= 4:
+    #     financial_year = f"{year}-{year+1}"
+    # else:
+    #     financial_year = f"{year-1}-{year}"
+
+    # col3.metric("Month", month)
+    # col4.metric("Financial Year", financial_year)
 
     col5, col6, col7, col8 = st.columns(4)
 
