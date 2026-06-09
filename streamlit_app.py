@@ -23,7 +23,7 @@ COLUMNS = [
     "Bill Amount",
     "TDS",
     "Net Amount",
-    "Payee"
+    "Payer"
 ]
 
 
@@ -74,17 +74,31 @@ def load_data():
 
     df["Financial Year"] = df["Financial Year"].astype(str).str.strip()
     df["Month"] = df["Month"].astype(str).str.strip()
-    df["Payee"] = df["Payee"].astype(str).str.strip()
+    df["Payer"] = df["Payer"].astype(str).str.strip()
 
     return df
 
 
 df = load_data()
 
+if "submit_success" not in st.session_state:
+    st.session_state.submit_success = False
+
+if "bill_amount_live" not in st.session_state:
+    st.session_state.bill_amount_live = 0.0
+
+if "payment_date_live" not in st.session_state:
+    st.session_state.payment_date_live = date.today()
+
+
 st.title("GIRRAJ PACKAGING")
 st.subheader("Payment Entry and Dashboard")
 
-Payee_list = [
+if st.session_state.submit_success:
+    st.success("✅ Record submitted successfully")
+    st.session_state.submit_success = False
+
+payer_list = [
     "PILU MRIDHA",
     "TOTON SARKAR",
     "DEBABRATA BISWAS"
@@ -99,8 +113,7 @@ col_date, col_month, col_fy = st.columns(3)
 
 with col_date:
     payment_date = st.date_input(
-        "Payment Date",
-        value=date.today(),
+        "Payment Date *",
         key="payment_date_live"
     )
 
@@ -108,24 +121,17 @@ month = payment_date.strftime("%B")
 financial_year = get_financial_year(payment_date)
 
 with col_month:
-    st.text_input(
-        "Month",
-        value=month,
-        disabled=True
-    )
+    st.text_input("Month", value=month, disabled=True)
 
 with col_fy:
-    st.text_input(
-        "Financial Year",
-        value=financial_year,
-        disabled=True
-    )
+    st.text_input("Financial Year", value=financial_year, disabled=True)
+
 
 col_bill, col_tds, col_net = st.columns(3)
 
 with col_bill:
     bill_amount = st.number_input(
-        "Bill Amount",
+        "Bill Amount *",
         min_value=0.0,
         step=0.5,
         format="%.2f",
@@ -136,18 +142,10 @@ tds_amount = bill_amount * 0.01
 net_amount = bill_amount - tds_amount
 
 with col_tds:
-    st.text_input(
-        "TDS Amount 1%",
-        value=f"{tds_amount:.2f}",
-        disabled=True
-    )
+    st.text_input("TDS Amount 1%", value=f"{tds_amount:.2f}", disabled=True)
 
 with col_net:
-    st.text_input(
-        "Net Amount",
-        value=f"{net_amount:.2f}",
-        disabled=True
-    )
+    st.text_input("Net Amount", value=f"{net_amount:.2f}", disabled=True)
 
 
 with st.form("payment_form", clear_on_submit=True):
@@ -155,31 +153,43 @@ with st.form("payment_form", clear_on_submit=True):
     col1, col2 = st.columns(2)
 
     with col1:
-        Payee = st.selectbox("Select Payee", Payee_list)
+        payer = st.selectbox(
+            "Select Payee *",
+            [""] + payer_list
+        )
 
     with col2:
-        cheque_no = st.text_input("Cheque No.")
+        cheque_no = st.text_input("Cheque No. *")
 
     submitted = st.form_submit_button("Submit Payment")
 
     if submitted:
-        if bill_amount > 0:
+
+        if payer == "":
+            st.warning("Please select a payee.")
+
+        elif cheque_no.strip() == "":
+            st.warning("Please enter cheque number.")
+
+        elif bill_amount <= 0:
+            st.warning("Please enter bill amount greater than 0.")
+
+        else:
             sheet.append_row([
                 financial_year,
                 month,
                 payment_date.strftime("%d/%m/%Y"),
-                cheque_no,
+                cheque_no.strip(),
                 float(bill_amount),
                 float(tds_amount),
                 float(net_amount),
-                Payee
+                payer
             ])
 
-            st.success("✅ Record submitted successfully")
-            st.toast("✅ Record submitted successfully")
+            st.session_state.submit_success = True
+            st.session_state.bill_amount_live = 0.0
+            st.session_state.payment_date_live = date.today()
             st.rerun()
-        else:
-            st.warning("Please enter bill amount greater than 0.")
 
 
 st.divider()
@@ -197,8 +207,8 @@ available_months = ["All"] + sorted(
     df["Month"].dropna().astype(str).str.strip().unique().tolist()
 )
 
-available_Payees = ["All"] + sorted(
-    df["Payee"].dropna().astype(str).str.strip().unique().tolist()
+available_payers = ["All"] + sorted(
+    df["Payer"].dropna().astype(str).str.strip().unique().tolist()
 )
 
 col9, col10, col11 = st.columns(3)
@@ -210,28 +220,22 @@ with col10:
     selected_month = st.selectbox("Month", available_months)
 
 with col11:
-    selected_Payee = st.selectbox("Payee", available_Payees)
+    selected_payer = st.selectbox("Payer", available_payers)
 
 filtered_df = df.copy()
 
 if selected_year != "All":
-    filtered_df = filtered_df[
-        filtered_df["Financial Year"] == selected_year
-    ]
+    filtered_df = filtered_df[filtered_df["Financial Year"] == selected_year]
 
 if selected_month != "All":
-    filtered_df = filtered_df[
-        filtered_df["Month"] == selected_month
-    ]
+    filtered_df = filtered_df[filtered_df["Month"] == selected_month]
 
-if selected_Payee != "All":
-    filtered_df = filtered_df[
-        filtered_df["Payee"] == selected_Payee
-    ]
+if selected_payer != "All":
+    filtered_df = filtered_df[filtered_df["Payer"] == selected_payer]
 
 
 # -----------------------------
-# Summary Section
+# Summary
 # -----------------------------
 st.subheader("Summary")
 
@@ -255,18 +259,18 @@ with col15:
     st.metric("Total Transactions", total_transactions)
 
 
-st.subheader("Payee-wise Total")
+st.subheader("Payer-wise Total")
 
 if not filtered_df.empty:
-    Payee_summary = (
-        filtered_df.groupby("Payee", as_index=False)[
+    payer_summary = (
+        filtered_df.groupby("Payer", as_index=False)[
             ["Bill Amount", "TDS", "Net Amount"]
         ]
         .sum()
         .sort_values("Net Amount", ascending=False)
     )
 
-    st.dataframe(Payee_summary, width="stretch")
+    st.dataframe(payer_summary, width="stretch")
 else:
     st.info("No data found for selected filter.")
 
