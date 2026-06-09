@@ -40,6 +40,15 @@ def connect_sheet():
 sheet = connect_sheet()
 
 
+def get_financial_year(payment_date):
+    year = payment_date.year
+
+    if payment_date.month >= 4:
+        return f"{year}-{year + 1}"
+    else:
+        return f"{year - 1}-{year}"
+
+
 def load_data():
     records = sheet.get_all_records()
 
@@ -51,11 +60,16 @@ def load_data():
 
     for col in COLUMNS:
         if col not in df.columns:
-            df[col] = None
+            df[col] = ""
 
     df = df[COLUMNS]
 
-    df["Payment Date"] = pd.to_datetime(df["Payment Date"], errors="coerce")
+    df["Payment Date"] = pd.to_datetime(
+        df["Payment Date"],
+        format="%d/%m/%Y",
+        errors="coerce"
+    )
+
     df["Bill Amount"] = pd.to_numeric(df["Bill Amount"], errors="coerce").fillna(0)
     df["TDS"] = pd.to_numeric(df["TDS"], errors="coerce").fillna(0)
     df["Net Amount"] = pd.to_numeric(df["Net Amount"], errors="coerce").fillna(0)
@@ -78,128 +92,142 @@ Payee_list = [
     "DEBABRATA BISWAS"
 ]
 
-financial_year_list = [
-    "2024-2025",
-    "2025-2026",
-    "2026-2027",
-    "2027-2028"
-]
-
-month_list = [
-    "April", "May", "June", "July", "August", "September",
-    "October", "November", "December", "January", "February", "March"
-]
-
 st.subheader("New Payment Entry")
 
-col1, col2, col3, col4 = st.columns(4)
+with st.form("payment_form", clear_on_submit=True):
 
-with col1:
-    financial_year = st.selectbox("Financial Year", financial_year_list)
+    col1, col2, col3, col4 = st.columns(4)
 
-with col2:
-    month = st.selectbox("Month", month_list)
+    with col1:
+        Payee = st.selectbox("Select Payee", Payee_list)
 
-with col3:
-    Payee = st.selectbox("Select Payee", Payee_list)
+    with col2:
+        payment_date = st.date_input(
+            "Payment Date",
+            value=date.today()
+        )
 
-with col4:
-    payment_date = st.date_input("Payment Date", value=date.today())
+    month = payment_date.strftime("%B")
+    financial_year = get_financial_year(payment_date)
 
-col5, col6, col7, col8 = st.columns(4)
+    with col3:
+        st.text_input(
+            "Month",
+            value=month,
+            disabled=True
+        )
 
-with col5:
-    cheque_no = st.text_input("Cheque No.")
+    with col4:
+        st.text_input(
+            "Financial Year",
+            value=financial_year,
+            disabled=True
+        )
 
-with col6:
-    bill_amount = st.number_input(
-        "Bill Amount",
-        min_value=0.0,
-        step=0.5,
-        format="%.2f"
-    )
+    col5, col6, col7, col8 = st.columns(4)
 
-tds_percent = 1
-tds_amount = bill_amount * tds_percent / 100
-net_amount = bill_amount - tds_amount
+    with col5:
+        cheque_no = st.text_input("Cheque No.")
 
-with col7:
-    st.number_input(
-        "TDS Amount 1%",
-        value=float(tds_amount),
-        disabled=True,
-        format="%.2f"
-    )
+    with col6:
+        bill_amount = st.number_input(
+            "Bill Amount",
+            min_value=0.0,
+            step=0.5,
+            format="%.2f"
+        )
 
-with col8:
-    st.number_input(
-        "Net Amount",
-        value=float(net_amount),
-        disabled=True,
-        format="%.2f"
-    )
+    tds_amount = bill_amount * 0.01
+    net_amount = bill_amount - tds_amount
 
+    with col7:
+        st.number_input(
+            "TDS Amount 1%",
+            value=float(tds_amount),
+            disabled=True,
+            format="%.2f"
+        )
 
-if st.button("Submit Payment"):
-    if bill_amount > 0:
-        sheet.append_row([
-            financial_year,
-            month,
-            payment_date.strftime("%d/%m/%Y"),
-            cheque_no,
-            float(bill_amount),
-            float(tds_amount),
-            float(net_amount),
-            Payee
-        ])
+    with col8:
+        st.number_input(
+            "Net Amount",
+            value=float(net_amount),
+            disabled=True,
+            format="%.2f"
+        )
 
-        st.success("Payment saved successfully.")
-        st.rerun()
-    else:
-        st.warning("Please enter bill amount greater than 0.")
+    submitted = st.form_submit_button("Submit Payment")
+
+    if submitted:
+        if bill_amount > 0:
+            sheet.append_row([
+                financial_year,
+                month,
+                payment_date.strftime("%d/%m/%Y"),
+                cheque_no,
+                float(bill_amount),
+                float(tds_amount),
+                float(net_amount),
+                Payee
+            ])
+
+            st.success("✅ Record submitted successfully")
+            st.toast("✅ Record submitted successfully")
+        else:
+            st.warning("Please enter bill amount greater than 0.")
 
 
 st.divider()
 
+# -----------------------------
+# Filter Section
+# -----------------------------
 st.subheader("Filter Payments")
 
-# Make dropdown values from actual sheet data
-available_years = sorted(df["Financial Year"].dropna().astype(str).str.strip().unique())
-available_months = sorted(df["Month"].dropna().astype(str).str.strip().unique())
-available_Payees = sorted(df["Payee"].dropna().astype(str).str.strip().unique())
+available_years = ["All"] + sorted(
+    df["Financial Year"].dropna().astype(str).str.strip().unique().tolist()
+)
+
+available_months = ["All"] + sorted(
+    df["Month"].dropna().astype(str).str.strip().unique().tolist()
+)
+
+available_Payees = ["All"] + sorted(
+    df["Payee"].dropna().astype(str).str.strip().unique().tolist()
+)
 
 col9, col10, col11 = st.columns(3)
 
 with col9:
-    selected_financial_years = st.multiselect(
-        "Select Financial Year",
-        available_years,
-        default=available_years
-    )
+    selected_year = st.selectbox("Financial Year", available_years)
 
 with col10:
-    selected_months = st.multiselect(
-        "Select Month",
-        available_months,
-        default=available_months
-    )
+    selected_month = st.selectbox("Month", available_months)
 
 with col11:
-    selected_Payees = st.multiselect(
-        "Select Payee(s)",
-        available_Payees,
-        default=available_Payees
-    )
+    selected_Payee = st.selectbox("Payee", available_Payees)
 
-if not df.empty:
-    filtered_df = df[
-        (df["Financial Year"].astype(str).str.strip().isin(selected_financial_years)) &
-        (df["Month"].astype(str).str.strip().isin(selected_months)) &
-        (df["Payee"].astype(str).str.strip().isin(selected_Payees))
-    ].copy()
-else:
-    filtered_df = pd.DataFrame(columns=COLUMNS)
+filtered_df = df.copy()
 
+if selected_year != "All":
+    filtered_df = filtered_df[
+        filtered_df["Financial Year"] == selected_year
+    ]
+
+if selected_month != "All":
+    filtered_df = filtered_df[
+        filtered_df["Month"] == selected_month
+    ]
+
+if selected_Payee != "All":
+    filtered_df = filtered_df[
+        filtered_df["Payee"] == selected_Payee
+    ]
+
+
+# -----------------------------
+# Summary Section
+# -----------------------------
 st.subheader("Summary")
 
 total_bill_amount = filtered_df["Bill Amount"].sum()
@@ -222,6 +250,9 @@ with col15:
     st.metric("Total Transactions", total_transactions)
 
 
+# -----------------------------
+# Payee Wise Summary
+# -----------------------------
 st.subheader("Payee-wise Total")
 
 if not filtered_df.empty:
@@ -238,15 +269,32 @@ else:
     st.info("No data found for selected filter.")
 
 
+# -----------------------------
+# Transaction Table
+# -----------------------------
 st.subheader("Transaction Records")
-st.dataframe(filtered_df, width="stretch")
+
+display_df = filtered_df.copy()
+
+if not display_df.empty:
+    display_df["Payment Date"] = display_df["Payment Date"].dt.strftime("%d/%m/%Y")
+
+st.dataframe(display_df, width="stretch")
 
 
+# -----------------------------
+# Excel Download
+# -----------------------------
 def convert_to_excel(dataframe):
     output = BytesIO()
 
+    excel_df = dataframe.copy()
+
+    if not excel_df.empty:
+        excel_df["Payment Date"] = excel_df["Payment Date"].dt.strftime("%d/%m/%Y")
+
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        dataframe.to_excel(writer, index=False, sheet_name="Payments")
+        excel_df.to_excel(writer, index=False, sheet_name="Payments")
 
     return output.getvalue()
 
