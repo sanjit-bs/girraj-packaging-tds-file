@@ -23,7 +23,7 @@ COLUMNS = [
     "Bill Amount",
     "TDS",
     "Net Amount",
-    "Payer"
+    "Payee"
 ]
 
 
@@ -74,7 +74,7 @@ def load_data():
 
     df["Financial Year"] = df["Financial Year"].astype(str).str.strip()
     df["Month"] = df["Month"].astype(str).str.strip()
-    df["Payer"] = df["Payer"].astype(str).str.strip()
+    df["Payee"] = df["Payee"].astype(str).str.strip()
 
     return df
 
@@ -98,7 +98,7 @@ if st.session_state.submit_success:
     st.success("✅ Record submitted successfully")
     st.session_state.submit_success = False
 
-payer_list = [
+Payee_list = [
     "PILU MRIDHA",
     "TOTON SARKAR",
     "DEBABRATA BISWAS"
@@ -159,7 +159,7 @@ with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
     col1, col2 = st.columns(2)
 
     with col1:
-        payer = st.selectbox("Select Payee *", [""] + payer_list)
+        Payee = st.selectbox("Select Payee *", [""] + Payee_list)
 
     with col2:
         cheque_no = st.text_input("Cheque No. *")
@@ -167,7 +167,7 @@ with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
     submitted = st.form_submit_button("Submit Payment")
 
     if submitted:
-        if payer == "":
+        if Payee == "":
             st.warning("Please select a payee.")
         elif cheque_no.strip() == "":
             st.warning("Please enter cheque number.")
@@ -182,7 +182,7 @@ with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
                 float(bill_amount),
                 float(tds_amount),
                 float(net_amount),
-                payer
+                Payee
             ])
 
             st.session_state.submit_success = True
@@ -205,8 +205,8 @@ available_months = ["All"] + sorted(
     df["Month"].dropna().astype(str).str.strip().unique().tolist()
 )
 
-available_payers = ["All"] + sorted(
-    df["Payer"].dropna().astype(str).str.strip().unique().tolist()
+available_Payees = ["All"] + sorted(
+    df["Payee"].dropna().astype(str).str.strip().unique().tolist()
 )
 
 col9, col10, col11 = st.columns(3)
@@ -218,7 +218,7 @@ with col10:
     selected_month = st.selectbox("Month", available_months)
 
 with col11:
-    selected_payer = st.selectbox("Payer", available_payers)
+    selected_Payee = st.selectbox("Payee", available_Payees)
 
 filtered_df = df.copy()
 
@@ -228,8 +228,8 @@ if selected_year != "All":
 if selected_month != "All":
     filtered_df = filtered_df[filtered_df["Month"] == selected_month]
 
-if selected_payer != "All":
-    filtered_df = filtered_df[filtered_df["Payer"] == selected_payer]
+if selected_Payee != "All":
+    filtered_df = filtered_df[filtered_df["Payee"] == selected_Payee]
 
 
 # -----------------------------
@@ -257,18 +257,18 @@ with col15:
     st.metric("Total Transactions", total_transactions)
 
 
-st.subheader("Payer-wise Total")
+st.subheader("Payee-wise Total")
 
 if not filtered_df.empty:
-    payer_summary = (
-        filtered_df.groupby("Payer", as_index=False)[
+    Payee_summary = (
+        filtered_df.groupby("Payee", as_index=False)[
             ["Bill Amount", "TDS", "Net Amount"]
         ]
         .sum()
         .sort_values("Net Amount", ascending=False)
     )
 
-    st.dataframe(payer_summary, width="stretch")
+    st.dataframe(Payee_summary, width="stretch")
 else:
     st.info("No data found for selected filter.")
 
