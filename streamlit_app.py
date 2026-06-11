@@ -23,7 +23,9 @@ COLUMNS = [
     "Bill Amount",
     "TDS",
     "Net Amount",
-    "Payee"
+    "Payee",
+    "Category",
+    "Remark"
 ]
 
 
@@ -72,9 +74,9 @@ def load_data():
     df["TDS"] = pd.to_numeric(df["TDS"], errors="coerce").fillna(0)
     df["Net Amount"] = pd.to_numeric(df["Net Amount"], errors="coerce").fillna(0)
 
-    df["Financial Year"] = df["Financial Year"].astype(str).str.strip()
-    df["Month"] = df["Month"].astype(str).str.strip()
-    df["Payee"] = df["Payee"].astype(str).str.strip()
+    text_cols = ["Financial Year", "Month", "Payee", "Category", "Remark", "Cheque No"]
+    for col in text_cols:
+        df[col] = df[col].astype(str).str.strip()
 
     return df
 
@@ -84,11 +86,8 @@ df = load_data()
 if "submit_success" not in st.session_state:
     st.session_state.submit_success = False
 
-if "bill_amount_live" not in st.session_state:
-    st.session_state.bill_amount_live = 0.0
-
-if "payment_date_live" not in st.session_state:
-    st.session_state.payment_date_live = date.today()
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
 
 
 st.title("GIRRAJ PACKAGING")
@@ -98,19 +97,23 @@ if st.session_state.submit_success:
     st.success("✅ Record submitted successfully")
     st.session_state.submit_success = False
 
-Payee_list = [
+
+payee_list = [
     "PILU MRIDHA",
     "TOTON SARKAR",
     "DEBABRATA BISWAS"
 ]
 
+category_list = [
+    "LABOURE",
+    "CARRIAGE"
+]
+
+
 # -----------------------------
 # New Payment Entry
 # -----------------------------
 st.subheader("New Payment Entry")
-
-if "form_key" not in st.session_state:
-    st.session_state.form_key = 0
 
 key_suffix = st.session_state.form_key
 
@@ -127,10 +130,20 @@ month = payment_date.strftime("%B")
 financial_year = get_financial_year(payment_date)
 
 with col_month:
-    st.text_input("Month", value=month, disabled=True, key=f"month_{key_suffix}")
+    st.text_input(
+        "Month",
+        value=month,
+        disabled=True,
+        key=f"month_{key_suffix}"
+    )
 
 with col_fy:
-    st.text_input("Financial Year", value=financial_year, disabled=True, key=f"fy_{key_suffix}")
+    st.text_input(
+        "Financial Year",
+        value=financial_year,
+        disabled=True,
+        key=f"fy_{key_suffix}"
+    )
 
 
 col_bill, col_tds, col_net = st.columns(3)
@@ -148,31 +161,57 @@ tds_amount = bill_amount * 0.01
 net_amount = bill_amount - tds_amount
 
 with col_tds:
-    st.text_input("TDS Amount 1%", value=f"{tds_amount:.2f}", disabled=True, key=f"tds_{key_suffix}")
+    st.text_input(
+        "TDS Amount 1%",
+        value=f"{tds_amount:.2f}",
+        disabled=True,
+        key=f"tds_{key_suffix}"
+    )
 
 with col_net:
-    st.text_input("Net Amount", value=f"{net_amount:.2f}", disabled=True, key=f"net_{key_suffix}")
+    st.text_input(
+        "Net Amount",
+        value=f"{net_amount:.2f}",
+        disabled=True,
+        key=f"net_{key_suffix}"
+    )
 
 
 with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
 
-    col1, col2 = st.columns(2)
+    col1, col2, col3 = st.columns(3)
 
     with col1:
-        Payee = st.selectbox("Select Payee *", [""] + Payee_list)
+        payee = st.selectbox(
+            "Select Payee *",
+            [""] + payee_list
+        )
 
     with col2:
         cheque_no = st.text_input("Cheque No. *")
 
+    with col3:
+        category = st.selectbox(
+            "Category *",
+            [""] + category_list
+        )
+
+    remark = st.text_area(
+        "Remark",
+        placeholder="Enter remark here..."
+    )
+
     submitted = st.form_submit_button("Submit Payment")
 
     if submitted:
-        if Payee == "":
+        if payee == "":
             st.warning("Please select a payee.")
         elif cheque_no.strip() == "":
             st.warning("Please enter cheque number.")
         elif bill_amount <= 0:
             st.warning("Please enter bill amount greater than 0.")
+        elif category == "":
+            st.warning("Please select category.")
         else:
             sheet.append_row([
                 financial_year,
@@ -182,7 +221,9 @@ with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
                 float(bill_amount),
                 float(tds_amount),
                 float(net_amount),
-                Payee
+                payee,
+                category,
+                remark.strip()
             ])
 
             st.session_state.submit_success = True
@@ -191,6 +232,7 @@ with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
 
 
 st.divider()
+
 
 # -----------------------------
 # Filter Section
@@ -205,11 +247,15 @@ available_months = ["All"] + sorted(
     df["Month"].dropna().astype(str).str.strip().unique().tolist()
 )
 
-available_Payees = ["All"] + sorted(
+available_payees = ["All"] + sorted(
     df["Payee"].dropna().astype(str).str.strip().unique().tolist()
 )
 
-col9, col10, col11 = st.columns(3)
+available_categories = ["All"] + sorted(
+    df["Category"].dropna().astype(str).str.strip().unique().tolist()
+)
+
+col9, col10, col11, col12 = st.columns(4)
 
 with col9:
     selected_year = st.selectbox("Financial Year", available_years)
@@ -218,7 +264,11 @@ with col10:
     selected_month = st.selectbox("Month", available_months)
 
 with col11:
-    selected_Payee = st.selectbox("Payee", available_Payees)
+    selected_payee = st.selectbox("Payee", available_payees)
+
+with col12:
+    selected_category = st.selectbox("Category", available_categories)
+
 
 filtered_df = df.copy()
 
@@ -228,8 +278,11 @@ if selected_year != "All":
 if selected_month != "All":
     filtered_df = filtered_df[filtered_df["Month"] == selected_month]
 
-if selected_Payee != "All":
-    filtered_df = filtered_df[filtered_df["Payee"] == selected_Payee]
+if selected_payee != "All":
+    filtered_df = filtered_df[filtered_df["Payee"] == selected_payee]
+
+if selected_category != "All":
+    filtered_df = filtered_df[filtered_df["Category"] == selected_category]
 
 
 # -----------------------------
@@ -242,25 +295,25 @@ total_tds = filtered_df["TDS"].sum()
 total_net_amount = filtered_df["Net Amount"].sum()
 total_transactions = len(filtered_df)
 
-col12, col13, col14, col15 = st.columns(4)
-
-with col12:
-    st.metric("Total Bill Amount", f"₹{total_bill_amount:,.2f}")
+col13, col14, col15, col16 = st.columns(4)
 
 with col13:
-    st.metric("Total TDS", f"₹{total_tds:,.2f}")
+    st.metric("Total Bill Amount", f"₹{total_bill_amount:,.2f}")
 
 with col14:
-    st.metric("Total Net Amount", f"₹{total_net_amount:,.2f}")
+    st.metric("Total TDS", f"₹{total_tds:,.2f}")
 
 with col15:
+    st.metric("Total Net Amount", f"₹{total_net_amount:,.2f}")
+
+with col16:
     st.metric("Total Transactions", total_transactions)
 
 
 st.subheader("Payee-wise Total")
 
 if not filtered_df.empty:
-    Payee_summary = (
+    payee_summary = (
         filtered_df.groupby("Payee", as_index=False)[
             ["Bill Amount", "TDS", "Net Amount"]
         ]
@@ -268,9 +321,23 @@ if not filtered_df.empty:
         .sort_values("Net Amount", ascending=False)
     )
 
-    st.dataframe(Payee_summary, width="stretch")
+    st.dataframe(payee_summary, width="stretch")
 else:
     st.info("No data found for selected filter.")
+
+
+st.subheader("Category-wise Total")
+
+if not filtered_df.empty:
+    category_summary = (
+        filtered_df.groupby("Category", as_index=False)[
+            ["Bill Amount", "TDS", "Net Amount"]
+        ]
+        .sum()
+        .sort_values("Net Amount", ascending=False)
+    )
+
+    st.dataframe(category_summary, width="stretch")
 
 
 st.subheader("Transaction Records")
