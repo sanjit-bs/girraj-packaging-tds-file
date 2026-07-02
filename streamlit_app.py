@@ -113,123 +113,147 @@ category_list = [
 # -----------------------------
 # New Payment Entry
 # -----------------------------
+# ==========================================================
+# NEW PAYMENT ENTRY
+# ==========================================================
+
 st.subheader("New Payment Entry")
 
-key_suffix = st.session_state.form_key
+col1, col2, col3 = st.columns(3)
 
-col_date, col_month, col_fy = st.columns(3)
-
-with col_date:
+with col1:
     payment_date = st.date_input(
         "Payment Date *",
-        value=date.today(),
-        key=f"payment_date_{key_suffix}"
+        value=st.session_state.payment_date,
+        key="payment_date"
     )
 
+# ---------- Live Calculations ----------
 month = payment_date.strftime("%B")
 financial_year = get_financial_year(payment_date)
 
-with col_month:
+with col2:
     st.text_input(
         "Month",
         value=month,
-        disabled=True,
-        key=f"month_{key_suffix}"
+        disabled=True
     )
 
-with col_fy:
+with col3:
     st.text_input(
         "Financial Year",
         value=financial_year,
-        disabled=True,
-        key=f"fy_{key_suffix}"
+        disabled=True
     )
 
+st.write("")
 
-col_bill, col_tds, col_net = st.columns(3)
+col4, col5, col6 = st.columns(3)
 
-with col_bill:
+with col4:
     bill_amount = st.number_input(
         "Bill Amount *",
         min_value=0.0,
         step=0.5,
         format="%.2f",
-        key=f"bill_amount_{key_suffix}"
+        value=st.session_state.bill_amount,
+        key="bill_amount"
     )
 
-tds_amount = bill_amount * 0.01
-net_amount = bill_amount - tds_amount
+# ---------- Live TDS ----------
+tds_amount = round(bill_amount * 0.01, 2)
+net_amount = round(bill_amount - tds_amount, 2)
 
-with col_tds:
+with col5:
     st.text_input(
         "TDS Amount 1%",
         value=f"{tds_amount:.2f}",
-        disabled=True,
-        key=f"tds_{key_suffix}"
+        disabled=True
     )
 
-with col_net:
+with col6:
     st.text_input(
         "Net Amount",
         value=f"{net_amount:.2f}",
-        disabled=True,
-        key=f"net_{key_suffix}"
+        disabled=True
     )
 
+st.write("")
 
-with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
+col7, col8, col9 = st.columns(3)
 
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        payee = st.selectbox(
-            "Select Payee *",
-            [""] + payee_list
-        )
-
-    with col2:
-        cheque_no = st.text_input("Cheque No. *")
-
-    with col3:
-        category = st.selectbox(
-            "Category *",
-            [""] + category_list
-        )
-
-    remark = st.text_area(
-        "Remark",
-        placeholder="Enter remark here..."
+with col7:
+    payee = st.selectbox(
+        "Select Payee *",
+        [""] + payee_list,
+        key="payee"
     )
 
-    submitted = st.form_submit_button("Submit Payment")
+with col8:
+    cheque_no = st.text_input(
+        "Cheque No. *",
+        key="cheque_no"
+    )
 
-    if submitted:
-        if payee == "":
-            st.warning("Please select a payee.")
-        elif cheque_no.strip() == "":
-            st.warning("Please enter cheque number.")
-        elif bill_amount <= 0:
-            st.warning("Please enter bill amount greater than 0.")
-        elif category == "":
-            st.warning("Please select category.")
-        else:
-            sheet.append_row([
-                financial_year,
-                month,
-                payment_date.strftime("%d/%m/%Y"),
-                cheque_no.strip(),
-                float(bill_amount),
-                float(tds_amount),
-                float(net_amount),
-                payee,
-                category,
-                remark.strip()
-            ])
+with col9:
+    category = st.selectbox(
+        "Category *",
+        [""] + category_list,
+        key="category"
+    )
 
-            st.session_state.submit_success = True
-            st.session_state.form_key += 1
-            st.rerun()
+remark = st.text_area(
+    "Remark",
+    key="remark"
+)
 
+# ==========================================================
+# SUBMIT
+# ==========================================================
+
+if st.button("Submit Payment", type="primary"):
+
+    if payee == "":
+        st.warning("Please select a payee.")
+
+    elif cheque_no.strip() == "":
+        st.warning("Please enter cheque number.")
+
+    elif category == "":
+        st.warning("Please select category.")
+
+    elif bill_amount <= 0:
+        st.warning("Bill amount must be greater than zero.")
+
+    else:
+
+        sheet.append_row([
+            financial_year,
+            month,
+            payment_date.strftime("%d/%m/%Y"),
+            cheque_no.strip(),
+            float(bill_amount),
+            float(tds_amount),
+            float(net_amount),
+            payee,
+            category,
+            remark.strip()
+        ])
+
+        st.success("✅ Record submitted successfully")
+
+        # -------- Clear all inputs --------
+
+        st.session_state.payment_date = date.today()
+        st.session_state.bill_amount = 0.0
+        st.session_state.payee = ""
+        st.session_state.cheque_no = ""
+        st.session_state.category = ""
+        st.session_state.remark = ""
+
+        st.cache_data.clear()
+
+        st.rerun()
 
 st.divider()
 
