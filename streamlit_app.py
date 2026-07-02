@@ -42,20 +42,11 @@ def connect_sheet():
 sheet = connect_sheet()
 
 
-def get_financial_year(dt):
-
-    if dt.month >= 4:
-        return f"{dt.year}-{dt.year+1}"
-
-    return f"{dt.year-1}-{dt.year}"
-
-
-def calculate_tds(amount):
-
-    tds = round(amount * 0.01, 2)
-    net = round(amount - tds, 2)
-
-    return tds, net
+def get_financial_year(payment_date):
+    year = payment_date.year
+    if payment_date.month >= 4:
+        return f"{year}-{year + 1}"
+    return f"{year - 1}-{year}"
 
 
 def load_data():
