@@ -113,131 +113,141 @@ category_list = [
 # -----------------------------
 # New Payment Entry
 # -----------------------------
+# -----------------------------
+# New Payment Entry
+# -----------------------------
 st.subheader("New Payment Entry")
 
 key_suffix = st.session_state.form_key
 
-with st.form(f"payment_form_{key_suffix}", clear_on_submit=True):
+# -----------------------------
+# Date
+# -----------------------------
+col_date, col_month, col_fy = st.columns(3)
 
-    # -------------------------
-    # Date Section
-    # -------------------------
-    col_date, col_month, col_fy = st.columns(3)
-
-    with col_date:
-        payment_date = st.date_input(
-            "Payment Date *",
-            value=date.today(),
-            key=f"payment_date_{key_suffix}"
-        )
-
-    month = payment_date.strftime("%B")
-    financial_year = get_financial_year(payment_date)
-
-    with col_month:
-        st.text_input(
-            "Month",
-            value=month,
-            disabled=True
-        )
-
-    with col_fy:
-        st.text_input(
-            "Financial Year",
-            value=financial_year,
-            disabled=True
-        )
-
-    # -------------------------
-    # Bill Amount
-    # -------------------------
-    col_bill, col_tds, col_net = st.columns(3)
-
-    with col_bill:
-        bill_amount = st.number_input(
-            "Bill Amount *",
-            min_value=0.0,
-            step=100.0,
-            format="%.2f"
-        )
-
-    tds_amount = bill_amount * 0.01
-    net_amount = bill_amount - tds_amount
-
-    with col_tds:
-        st.text_input(
-            "TDS Amount (1%)",
-            value=f"{tds_amount:.2f}",
-            disabled=True
-        )
-
-    with col_net:
-        st.text_input(
-            "Net Amount",
-            value=f"{net_amount:.2f}",
-            disabled=True
-        )
-
-    # -------------------------
-    # Other Details
-    # -------------------------
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        payee = st.selectbox(
-            "Select Payee *",
-            [""] + payee_list
-        )
-
-    with col2:
-        cheque_no = st.text_input("Cheque No. *")
-
-    with col3:
-        category = st.selectbox(
-            "Category *",
-            [""] + category_list
-        )
-
-    remark = st.text_area(
-        "Remark",
-        placeholder="Enter remark here..."
+with col_date:
+    payment_date = st.date_input(
+        "Payment Date *",
+        value=date.today(),
+        key=f"payment_date_{key_suffix}"
     )
 
-    submitted = st.form_submit_button("Submit Payment")
+month = payment_date.strftime("%B")
+financial_year = get_financial_year(payment_date)
 
-    if submitted:
+with col_month:
+    st.text_input(
+        "Month",
+        value=month,
+        disabled=True
+    )
 
-        if payee == "":
-            st.warning("Please select a payee.")
+with col_fy:
+    st.text_input(
+        "Financial Year",
+        value=financial_year,
+        disabled=True
+    )
 
-        elif cheque_no.strip() == "":
-            st.warning("Please enter cheque number.")
+# -----------------------------
+# Bill / TDS / Net
+# -----------------------------
+col_bill, col_tds, col_net = st.columns(3)
 
-        elif bill_amount <= 0:
-            st.warning("Please enter bill amount greater than 0.")
+with col_bill:
+    bill_amount = st.number_input(
+        "Bill Amount *",
+        min_value=0.0,
+        value=0.0,
+        step=100.0,
+        format="%.2f",
+        key=f"bill_{key_suffix}"
+    )
 
-        elif category == "":
-            st.warning("Please select category.")
+tds_amount = round(bill_amount * 0.01, 2)
+net_amount = round(bill_amount - tds_amount, 2)
 
-        else:
+with col_tds:
+    st.number_input(
+        "TDS Amount (1%)",
+        value=tds_amount,
+        disabled=True,
+        format="%.2f"
+    )
 
-            sheet.append_row([
-                financial_year,
-                month,
-                payment_date.strftime("%d/%m/%Y"),
-                cheque_no.strip(),
-                float(bill_amount),
-                float(tds_amount),
-                float(net_amount),
-                payee,
-                category,
-                remark.strip()
-            ])
+with col_net:
+    st.number_input(
+        "Net Amount",
+        value=net_amount,
+        disabled=True,
+        format="%.2f"
+    )
 
-            st.session_state.submit_success = True
-            st.session_state.form_key += 1
-            st.rerun()
+# -----------------------------
+# Other Details
+# -----------------------------
+col1, col2, col3 = st.columns(3)
 
+with col1:
+    payee = st.selectbox(
+        "Select Payee *",
+        [""] + payee_list,
+        key=f"payee_{key_suffix}"
+    )
+
+with col2:
+    cheque_no = st.text_input(
+        "Cheque No. *",
+        key=f"cheque_{key_suffix}"
+    )
+
+with col3:
+    category = st.selectbox(
+        "Category *",
+        [""] + category_list,
+        key=f"category_{key_suffix}"
+    )
+
+remark = st.text_area(
+    "Remark",
+    key=f"remark_{key_suffix}"
+)
+
+# -----------------------------
+# Submit Button
+# -----------------------------
+if st.button("Submit Payment", type="primary"):
+
+    if payee == "":
+        st.warning("Please select a payee.")
+
+    elif cheque_no.strip() == "":
+        st.warning("Please enter cheque number.")
+
+    elif bill_amount <= 0:
+        st.warning("Please enter bill amount greater than 0.")
+
+    elif category == "":
+        st.warning("Please select category.")
+
+    else:
+
+        sheet.append_row([
+            financial_year,
+            month,
+            payment_date.strftime("%d/%m/%Y"),
+            cheque_no.strip(),
+            float(bill_amount),
+            float(tds_amount),
+            float(net_amount),
+            payee,
+            category,
+            remark.strip()
+        ])
+
+        st.session_state.submit_success = True
+        st.session_state.form_key += 1
+        st.rerun()
 
 st.divider()
 
