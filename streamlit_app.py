@@ -620,19 +620,34 @@ pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower()
 if pending_df.empty:
     st.info("🎉 All deliveries have been successfully received!")
 else:
-    col_h1, col_h2, col_h3, col_h4 = st.columns([1.5, 1.5, 3, 1])
-    with col_h1: st.markdown("**Invoice No.**")
-    with col_h2: st.markdown("**Vehicle No.**")
-    with col_h3: st.markdown("**Company & Location**")
-    with col_h4: st.markdown("**Action**")
+    col_h1, col_h2, col_h3, col_h4, col_h5, col_h6 = st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
+    with col_h1: st.markdown("**Date**")
+    with col_h2: st.markdown("**Invoice No.**")
+    with col_h3: st.markdown("**Vehicle No.**")
+    with col_h4: st.markdown("**Driver**")
+    with col_h5: st.markdown("**Company & Location**")
+    with col_h6: st.markdown("**Action**")
     st.markdown("---")
 
     for idx, row in pending_df.iterrows():
         gs_row = idx + 2
-        col_inv, col_veh, col_comp, col_act = st.columns([1.5, 1.5, 3, 1])
-        with col_inv: st.write(row["Invoice No."])
-        with col_veh: st.write(row["Vehicle No."])
-        with col_comp: st.write(row["Company & Location"])
+        col_date, col_inv, col_veh, col_driver, col_comp, col_act = st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
+        
+        with col_date: 
+            # Safely format the date back to DD/MM/YYYY string if it's a datetime object
+            if isinstance(row["Date"], pd.Timestamp) or hasattr(row["Date"], "strftime"):
+                st.write(row["Date"].strftime("%d/%m/%Y"))
+            else:
+                st.write(str(row["Date"]))
+                
+        with col_inv: 
+            st.write(row["Invoice No."])
+        with col_veh: 
+            st.write(row["Vehicle No."])
+        with col_driver: 
+            st.write(row["Driver"])
+        with col_comp: 
+            st.write(row["Company & Location"])
         with col_act:
             if st.checkbox("Receive", key=f"recv_approval_act_{gs_row}"):
                 delivery_sheet.update_cell(gs_row, 7, "Yes")
