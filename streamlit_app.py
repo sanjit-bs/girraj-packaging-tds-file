@@ -109,10 +109,6 @@ category_list = [
     "CARRIAGE"
 ]
 
-
-# -----------------------------
-# New Payment Entry
-# -----------------------------
 # -----------------------------
 # New Payment Entry
 # -----------------------------
@@ -394,8 +390,14 @@ st.download_button(
 WORKSHEET_NAME2 = "Delivery_Record"
 
 COLUMNS2 = [
-    "Date", "Vehicle No.", "Invoice No.", "Driver", 
-    "Owner", "Company & Location", "Received", "Remark"
+    "Date",
+    "Vehicle No.",
+    "Invoice No.",
+    "Driver",
+    "Owner",
+    "Company & Location",
+    "Invoice Received",  # <-- Updated from "Received"
+    "Remark"
 ]
 
 # 1. Added ttl=3600 to prevent Google Auth Token expiration crashes
@@ -427,7 +429,7 @@ def load_delivery_data():
     df = df[COLUMNS2]
     df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce")
 
-    text_cols = ["Vehicle No.", "Invoice No.", "Driver", "Owner", "Company & Location", "Received", "Remark"]
+    text_cols = ["Vehicle No.", "Invoice No.", "Driver", "Owner", "Company & Location", "Invoice Received", "Remark"]
     for col in text_cols:
         df[col] = df[col].astype(str).str.strip()
 
@@ -522,7 +524,7 @@ st.subheader("📋 Pending Deliveries (Not Received)")
 
 # Filter data to only show rows where Received is "No"
 # Using string cleaning to prevent issues with trailing spaces or casing
-pending_df = delivery_df[delivery_df["Received"].str.strip().str.lower() == "no"]
+pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
 
 if pending_df.empty:
     st.info("🎉 All deliveries have been successfully received!")
