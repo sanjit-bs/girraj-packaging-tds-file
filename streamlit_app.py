@@ -398,7 +398,7 @@ COLUMNS2 = [
 
 COLUMNS3 = [
     "Date", "Company", "Invoice No.", "Taxable Value", 
-    "SGST", "CGST", "Total GST", "Total Value"
+    "SGST", "CGST", "Total GST", "Round Off", "Total Value"
 ]
 
 COMPANY_OPTIONS = [
@@ -567,7 +567,6 @@ with tab2:
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        # FIX: Separation of key logic and fallback value logic
         fin_invoice_no = st.text_input(
             "Invoice Number *", 
             value=st.session_state.current_invoice, 
@@ -577,19 +576,30 @@ with tab2:
         fin_company = st.selectbox("Company *", options=COMPANY_OPTIONS, key=f"fin_company_{key_suffix_fin}")
         
     fin_date = st.date_input("Invoice Date", value=date.today(), key=f"fin_date_{key_suffix_fin}")
-    taxable_value = st.number_input("Enter Taxable Value *", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"fin_taxable_{key_suffix_fin}")
     
+    col_tax, col_round = st.columns(2)
+    with col_tax:
+        taxable_value = st.number_input("Enter Taxable Value *", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"fin_taxable_{key_suffix_fin}")
+    with col_round:
+        # NEW: Round up / down field accepting both positive and negative increments
+        round_off = st.number_input("Round Up/Off (+/-)", value=0.0, step=0.01, format="%.2f", key=f"fin_round_{key_suffix_fin}")
+    
+    # Base calculation layer
     sgst_val = taxable_value * 0.025
     cgst_val = taxable_value * 0.025
     total_gst = sgst_val + cgst_val
-    total_value = taxable_value + total_gst
+    
+    # MODIFIED: Final value now incorporates your manual +/- adjustment
+    total_value = taxable_value + total_gst + round_off
 
     st.markdown("### 📊 Live Tax Calculation Breakdown")
     c_m1, c_m2, c_m3 = st.columns(3)
     c_m1.metric("SGST (2.5%)", f"₹ {sgst_val:,.2f}")
     c_m2.metric("CGST (2.5%)", f"₹ {cgst_val:,.2f}")
     c_m3.metric("Total GST (5%)", f"₹ {total_gst:,.2f}")
-    st.metric("📦 Final Total Value (Taxable + GST)", f"₹ {total_value:,.2f}")
+    
+    # UI displays the net total incorporating your round-off adjustment
+    st.metric("📦 Final Total Value (Taxable + GST + Round Off)", f"₹ {total_value:,.2f}")
 
     if st.button("Submit Financial Value Log", type="primary"):
         if fin_company == "Select":
@@ -599,9 +609,17 @@ with tab2:
         elif fin_invoice_no.strip() == "":
             st.warning("Please ensure Invoice Number is not empty.")
         else:
+            # Appends calculated items along with the round off item to Worksheet 3
             inv_value_sheet.append_row([
-                fin_date.strftime("%d/%m/%Y"), fin_company.strip(), fin_invoice_no.strip(),
-                round(taxable_value, 2), round(sgst_val, 2), round(cgst_val, 2), round(total_gst, 2), round(total_value, 2)
+                fin_date.strftime("%d/%m/%Y"), 
+                fin_company.strip(), 
+                fin_invoice_no.strip(),
+                round(taxable_value, 2), 
+                round(sgst_val, 2), 
+                round(cgst_val, 2), 
+                round(total_gst, 2),
+                round(round_off, 2),   # NEW COLUMN CELL DATA DETECTED
+                round(total_value, 2)
             ])
             st.cache_data.clear()
             fresh_df = load_delivery_data()
@@ -609,7 +627,6 @@ with tab2:
             st.session_state.submit_success = True
             st.session_state.form_key += 1
             st.rerun()
-
 # ======================================================
 # UI Section: Pending Deliveries Management
 # ======================================================
