@@ -391,97 +391,62 @@ st.download_button(
 )
 ######-----------------------------------------------------Transport Record Section------------------------------------------------------------#######
 
-# SCOPES = [
-#     "https://www.googleapis.com/auth/spreadsheets",
-#     "https://www.googleapis.com/auth/drive"
-# ]
-
-# SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
-# ======================================================
-# Delivery Record Sheet
-# ======================================================
-
 WORKSHEET_NAME2 = "Delivery_Record"
 
 COLUMNS2 = [
-    "Date",
-    "Vehicle No.",
-    "Invoice No.",
-    "Driver",
-    "Owner",
-    "Company & Location",
-    "Received",
-    "Remark"
+    "Date", "Vehicle No.", "Invoice No.", "Driver", 
+    "Owner", "Company & Location", "Received", "Remark"
 ]
 
-
-@st.cache_resource
+# 1. Added ttl=3600 to prevent Google Auth Token expiration crashes
+@st.cache_resource(ttl=3600)
 def connect_delivery_sheet():
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
         scopes=SCOPES
     )
-
     client = gspread.authorize(creds)
-
     return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME2)
-
 
 delivery_sheet = connect_delivery_sheet()
 
-
+# 2. Added cache_data to prevent making API calls on every keystroke
+@st.cache_data
 def load_delivery_data():
-
     records = delivery_sheet.get_all_records()
-
     if not records:
         return pd.DataFrame(columns=COLUMNS2)
 
     df = pd.DataFrame(records)
-
-    # Remove extra spaces from column names
     df.columns = df.columns.str.strip()
 
-    # Create missing columns if required
     for col in COLUMNS2:
         if col not in df.columns:
             df[col] = ""
 
     df = df[COLUMNS2]
+    df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce")
 
-    # Convert Date column
-    df["Date"] = pd.to_datetime(
-        df["Date"],
-        format="%d/%m/%Y",
-        errors="coerce"
-    )
-
-    # Clean text columns
-    text_cols = [
-        "Vehicle No.",
-        "Invoice No.",
-        "Driver",
-        "Owner",
-        "Company & Location",
-        "Received",
-        "Remark"
-    ]
-
+    text_cols = ["Vehicle No.", "Invoice No.", "Driver", "Owner", "Company & Location", "Received", "Remark"]
     for col in text_cols:
         df[col] = df[col].astype(str).str.strip()
 
     return df
 
-
 delivery_df = load_delivery_data()
 
-
-# Session State
+# Initialize Session State
 if "submit_success" not in st.session_state:
     st.session_state.submit_success = False
 
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
+
+# 3. Display success message HERE so it persists after st.rerun()
+if st.session_state.submit_success:
+    st.success("✅ Delivery Record Submitted Successfully")
+    # Reset it so the message doesn't persist on unrelated future interactions
+    st.session_state.submit_success = False 
 
 # -----------------------------
 # New Delivery Entry
@@ -491,81 +456,50 @@ st.subheader("New Delivery Entry")
 key_suffix = st.session_state.form_key
 
 col1, col2 = st.columns(2)
-
 with col1:
-    vehicle_no = st.text_input(
-        "Vehicle No. *",
-        key=f"vehicle_{key_suffix}"
-    )
-
+    vehicle_no = st.text_input("Vehicle No. *", key=f"vehicle_{key_suffix}")
 with col2:
-    invoice_no = st.text_input(
-        "Invoice Number *",
-        key=f"invoice_{key_suffix}"
-    )
+    invoice_no = st.text_input("Invoice Number *", key=f"invoice_{key_suffix}")
 
 col3, col4 = st.columns(2)
-
 with col3:
-    driver_name = st.text_input(
-        "Driver Name",
-        key=f"driver_{key_suffix}"
-    )
-
+    driver_name = st.text_input("Driver Name", key=f"driver_{key_suffix}")
 with col4:
-    owner_name = st.text_input(
-        "Owner Name",
-        key=f"owner_{key_suffix}"
-    )
+    owner_name = st.text_input("Owner Name", key=f"owner_{key_suffix}")
 
-company = st.text_input(
-    "Company & Location *",
-    key=f"company_{key_suffix}"
-)
-
-remark = st.text_area(
-    "Remark",
-    key=f"remark_{key_suffix}"
-)
-
-delivery_date = st.date_input(
-    "Delivery Date",
-    value=date.today(),
-    key=f"delivery_date_{key_suffix}"
-)
+company = st.text_input("Company & Location *", key=f"company_{key_suffix}")
+remark = st.text_area("Remark", key=f"remark_{key_suffix}")
+delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}")
 
 # -----------------------------
 # Submit Button
 # -----------------------------
 if st.button("Submit Delivery", type="primary"):
-
     if vehicle_no.strip() == "":
         st.warning("Please enter Vehicle Number.")
-
     elif invoice_no.strip() == "":
         st.warning("Please enter Invoice Number.")
-
     elif company.strip() == "":
         st.warning("Please enter Company & Location.")
-
     else:
-
+        # Append data to Google Sheets
         delivery_sheet.append_row([
             delivery_date.strftime("%d/%m/%Y"),   # Date
-            vehicle_no.strip(),                   # Vehicle No.
-            invoice_no.strip(),                   # Invoice No.
-            driver_name.strip(),                  # Driver
-            owner_name.strip(),                   # Owner
-            company.strip(),                      # Company & Location
-            "No",                                # Received
-            remark.strip()                        # Remark
+            vehicle_no.strip(),                    # Vehicle No.
+            invoice_no.strip(),                    # Invoice No.
+            driver_name.strip(),                   # Driver
+            owner_name.strip(),                    # Owner
+            company.strip(),                       # Company & Location
+            "No",                                  # Received
+            remark.strip()                         # Remark
         ])
 
+        # 4. Clear the data cache so the new row loads on rerun
+        st.cache_data.clear()
+
+        # Update states and trigger rerun
         st.session_state.submit_success = True
         st.session_state.form_key += 1
-
-        st.success("✅ Delivery Record Submitted Successfully")
-
         st.rerun()
 
 
