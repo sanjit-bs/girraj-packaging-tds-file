@@ -462,27 +462,18 @@ key_suffix = st.session_state.form_key
 
 col1, col2 = st.columns(2)
 with col1:
-    # Changed from vehicle_ to delivery_vehicle_
     vehicle_no = st.text_input("Vehicle No. *", key=f"delivery_vehicle_{key_suffix}")
 with col2:
-    # Changed from invoice_ to delivery_invoice_
     invoice_no = st.text_input("Invoice Number *", key=f"delivery_invoice_{key_suffix}")
 
 col3, col4 = st.columns(2)
 with col3:
-    # Changed from driver_ to delivery_driver_
     driver_name = st.text_input("Driver Name", key=f"delivery_driver_{key_suffix}")
 with col4:
-    # Changed from owner_ to delivery_owner_
     owner_name = st.text_input("Owner Name", key=f"delivery_owner_{key_suffix}")
 
-# Changed from company_ to delivery_company_
 company = st.text_input("Company & Location *", key=f"delivery_company_{key_suffix}")
-
-# CRITICAL FIX: Changed from remark_ to delivery_remark_
 remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
-
-# Changed from delivery_date_ to delivery_date_input_
 delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_input_{key_suffix}")
 
 # -----------------------------
@@ -504,11 +495,11 @@ if st.button("Submit Delivery", type="primary"):
             driver_name.strip(),                   # Driver
             owner_name.strip(),                    # Owner
             company.strip(),                       # Company & Location
-            "No",                                  # Received
+            "No",                                  # Invoice Received
             remark.strip()                         # Remark
         ])
 
-        # 4. Clear the data cache so the new row loads on rerun
+        # Clear the data cache so the new row loads on rerun
         st.cache_data.clear()
 
         # Update states and trigger rerun
@@ -522,9 +513,8 @@ if st.button("Submit Delivery", type="primary"):
 st.markdown("---")
 st.subheader("📋 Pending Deliveries (Not Received)")
 
-# Filter data to only show rows where Received is "No"
-# Using string cleaning to prevent issues with trailing spaces or casing
-pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "No"]
+# FIX: String matching target changed to lower-case "no"
+pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
 
 if pending_df.empty:
     st.info("🎉 All deliveries have been successfully received!")
@@ -542,7 +532,6 @@ else:
     # Loop through each pending item
     for idx, row in pending_df.iterrows():
         # Map DataFrame index back to the exact Google Sheet row number 
-        # (e.g., DF Index 0 + 2 = Google Sheet Row 2)
         gs_row = idx + 2
         
         col_inv, col_veh, col_comp, col_act = st.columns([1.5, 1.5, 3, 1])
@@ -557,7 +546,7 @@ else:
             # Dynamic unique key prevents widget duplicate errors
             if st.checkbox("Receive", key=f"recv_action_{gs_row}"):
                 
-                # Column 7 corresponds to the "Received" column in your sheet configuration
+                # Column 7 corresponds to the "Invoice Received" column
                 delivery_sheet.update_cell(gs_row, 7, "Yes")
                 
                 # Clear cached data so the app pulls the fresh sheet structure on refresh
@@ -566,4 +555,3 @@ else:
                 # Set success state and force immediate visual update
                 st.session_state.submit_success = True
                 st.rerun()
-
