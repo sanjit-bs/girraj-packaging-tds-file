@@ -391,19 +391,19 @@ st.download_button(
 )
 ######-----------------------------------------------------Transport Record Section------------------------------------------------------------#######
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive"
-]
+# SCOPES = [
+#     "https://www.googleapis.com/auth/spreadsheets",
+#     "https://www.googleapis.com/auth/drive"
+# ]
 
-SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
+# SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
 # ======================================================
 # Delivery Record Sheet
 # ======================================================
 
-WORKSHEET_NAME = "Delivery_Record"
+WORKSHEET_NAME2 = "Delivery_Record"
 
-COLUMNS = [
+COLUMNS2 = [
     "Date",
     "Vehicle No.",
     "Invoice No.",
@@ -424,7 +424,7 @@ def connect_delivery_sheet():
 
     client = gspread.authorize(creds)
 
-    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
+    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME2)
 
 
 delivery_sheet = connect_delivery_sheet()
@@ -435,7 +435,7 @@ def load_delivery_data():
     records = delivery_sheet.get_all_records()
 
     if not records:
-        return pd.DataFrame(columns=COLUMNS)
+        return pd.DataFrame(columns=COLUMNS2)
 
     df = pd.DataFrame(records)
 
