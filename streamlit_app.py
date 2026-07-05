@@ -457,6 +457,39 @@ def load_delivery_data():
 delivery_df = load_delivery_data()
 
 # ======================================================
+# NEW: Helper Function to Calculate Next Invoice No.
+# ======================================================
+def get_next_invoice_number(df):
+    if df.empty or "Invoice No." not in df.columns:
+        return "1"
+    
+    # Get all non-empty values from the Invoice No. column
+    valid_invoices = df["Invoice No."].dropna().astype(str).str.strip()
+    valid_invoices = [v for v in valid_invoices if v != ""]
+    
+    if not valid_invoices:
+        return "1"
+        
+    # Pick the absolute last entry in the sheet
+    last_invoice = valid_invoices[-1]
+    
+    # Extract numbers from the trailing edge of the invoice string (e.g., "INV-1002" -> "1002")
+    match = re.search(r'(\d+)$', last_invoice)
+    if match:
+        num_part = match.group(1)
+        next_num = int(num_part) + 1
+        # Preserve leading zeros if your sequence uses them (e.g., 001 -> 002)
+        next_num_str = str(next_num).zfill(len(num_part))
+        # Replace the old number with the incremented one
+        return last_invoice[:match.start()] + next_num_str
+    else:
+        # Fallback if the last invoice text contains absolutely no numbers
+        return "1"
+
+# Calculate the sequential baseline number
+suggested_next_invoice = get_next_invoice_number(delivery_df)
+
+# ======================================================
 # Runtime Session States & Initialization
 # ======================================================
 if "submit_success" not in st.session_state:
@@ -465,11 +498,14 @@ if "submit_success" not in st.session_state:
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 
-# Explicit state initialization used by text inputs
 if "current_driver" not in st.session_state:
     st.session_state.current_driver = ""
 if "current_owner" not in st.session_state:
     st.session_state.current_owner = ""
+
+# NEW: Invoice tracking state element
+if "current_invoice" not in st.session_state:
+    st.session_state.current_invoice = suggested_next_invoice
 
 if st.session_state.submit_success:
     st.success("✅ Operation Executed Successfully")
@@ -499,24 +535,26 @@ with col1:
     
     if vehicle_selection == "Others":
         final_vehicle_no = st.text_input(
-            "Enter Vehicle No. Manualy*", 
+            "Enter Manual Vehicle No. *", 
             key=f"delivery_entry_vehicle_manual_{key_suffix}"
         )
     else:
         final_vehicle_no = vehicle_selection
 
 with col2:
-    invoice_no = st.text_input("Invoice Number *", key=f"delivery_entry_invoice_{key_suffix}")
+    # MODIFIED: Controlled component tied to session state for automatic sequence increments
+    invoice_no = st.text_input(
+        "Invoice Number *", 
+        key="current_invoice"
+    )
 
 col3, col4 = st.columns(2)
 with col3:
-    # FIX: Explicit state mapping keys completely force text components to auto-populate
     driver_name = st.text_input(
         "Driver Name", 
         key="current_driver"
     )
 with col4:
-    # FIX: Explicit state mapping keys completely force text components to auto-populate
     owner_name = st.text_input(
         "Owner Name", 
         key="current_owner"
@@ -555,11 +593,16 @@ if st.button("Submit Delivery", type="primary"):
             remark.strip()                         
         ])
 
+        # Purge data cache and reload dataframe instantly to capture the row we just added
         st.cache_data.clear()
+        fresh_df = load_delivery_data()
         
-        # Reset tracking text fields for next entry
+        # Reset tracking entry text fields
         st.session_state.current_driver = ""
         st.session_state.current_owner = ""
+        
+        # NEW: Automatically compute and set the next sequence number for the user's view
+        st.session_state.current_invoice = get_next_invoice_number(fresh_df)
         
         st.session_state.submit_success = True
         st.session_state.form_key += 1
@@ -599,6 +642,11 @@ else:
         with col_act:
             if st.checkbox("Receive", key=f"recv_approval_act_{gs_row}"):
                 delivery_sheet.update_cell(gs_row, 7, "Yes")
+                
+                # Dynamic update logic for the checkbox loop as well
                 st.cache_data.clear()
+                fresh_df = load_delivery_data()
+                st.session_state.current_invoice = get_next_invoice_number(fresh_df)
+                
                 st.session_state.submit_success = True
                 st.rerun()
