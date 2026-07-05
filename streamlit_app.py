@@ -406,7 +406,6 @@ COMPANY_OPTIONS = [
     "Cold Roll (Gaighata)"
 ]
 
-# NEW: Master Data Mapping for Vehicles, Drivers, and Owners
 VEHICLE_MASTER = {
     "Select": {"driver": "", "owner": ""},
     "WB23C6784": {"driver": "Mangal", "owner": "D Biswas"},
@@ -466,9 +465,21 @@ if "submit_success" not in st.session_state:
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 
+# New states to explicitly track and force autofill values
+if "current_driver" not in st.session_state:
+    st.session_state.current_driver = ""
+if "current_owner" not in st.session_state:
+    st.session_state.current_owner = ""
+
 if st.session_state.submit_success:
     st.success("✅ Operation Executed Successfully")
     st.session_state.submit_success = False
+
+# Callback function to update input fields when selectbox shifts
+def update_vehicle_details():
+    sel = st.session_state[f"v_sel_{st.session_state.form_key}"]
+    st.session_state.current_driver = VEHICLE_MASTER[sel]["driver"]
+    st.session_state.current_owner = VEHICLE_MASTER[sel]["owner"]
 
 # ======================================================
 # UI Form: New Delivery Entry
@@ -479,14 +490,14 @@ key_suffix = st.session_state.form_key
 
 col1, col2 = st.columns(2)
 with col1:
-    # Changed to dropdown selector
+    # Added on_change callback to trigger autofill immediately on select
     vehicle_selection = st.selectbox(
         "Vehicle No. *", 
         options=list(VEHICLE_MASTER.keys()),
-        key=f"delivery_entry_vehicle_sel_{key_suffix}"
+        key=f"v_sel_{key_suffix}",
+        on_change=update_vehicle_details
     )
     
-    # Handle manual entry if "Others" is selected
     if vehicle_selection == "Others":
         final_vehicle_no = st.text_input(
             "Enter Manual Vehicle No. *", 
@@ -498,21 +509,19 @@ with col1:
 with col2:
     invoice_no = st.text_input("Invoice Number *", key=f"delivery_entry_invoice_{key_suffix}")
 
-# Pull pre-filled driver and owner details based on selection
-default_driver = VEHICLE_MASTER[vehicle_selection]["driver"]
-default_owner = VEHICLE_MASTER[vehicle_selection]["owner"]
-
 col3, col4 = st.columns(2)
 with col3:
+    # Tied directly to session state value to guarantee reactive updates
     driver_name = st.text_input(
         "Driver Name", 
-        value=default_driver,
+        value=st.session_state.current_driver,
         key=f"delivery_entry_driver_{key_suffix}"
     )
 with col4:
+    # Tied directly to session state value to guarantee reactive updates
     owner_name = st.text_input(
         "Owner Name", 
-        value=default_owner,
+        value=st.session_state.current_owner,
         key=f"delivery_entry_owner_{key_suffix}"
     )
 
@@ -528,7 +537,7 @@ delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"deliver
 # -----------------------------
 # Submission Process
 # -----------------------------
-if st.button("Submit Record", type="primary"):
+if st.button("Submit Delivery", type="primary"):
     if vehicle_selection == "Select":
         st.warning("Please select a Vehicle Number.")
     elif final_vehicle_no.strip() == "":
@@ -538,18 +547,24 @@ if st.button("Submit Record", type="primary"):
     elif company == "Select":
         st.warning("Please choose a valid Company & Location.")
     else:
+        # Capture whatever is in the text fields (allows manual overrides)
         delivery_sheet.append_row([
-            delivery_date.strftime("%d/%m/%Y"),   # Date
-            final_vehicle_no.strip().upper(),      # Vehicle No. (forced uppercase for consistency)
-            invoice_no.strip(),                    # Invoice No.
-            driver_name.strip(),                   # Driver
-            owner_name.strip(),                    # Owner
-            company.strip(),                       # Company & Location
-            "No",                                  # Invoice Received
-            remark.strip()                         # Remark
+            delivery_date.strftime("%d/%m/%Y"),   
+            final_vehicle_no.strip().upper(),      
+            invoice_no.strip(),                    
+            driver_name.strip(),                   
+            owner_name.strip(),                    
+            company.strip(),                       
+            "No",                                  
+            remark.strip()                         
         ])
 
         st.cache_data.clear()
+        
+        # Reset tracking text fields for next entry
+        st.session_state.current_driver = ""
+        st.session_state.current_owner = ""
+        
         st.session_state.submit_success = True
         st.session_state.form_key += 1
         st.rerun()
@@ -558,7 +573,7 @@ if st.button("Submit Record", type="primary"):
 # UI Section: Pending Deliveries Management
 # ======================================================
 st.markdown("---")
-st.subheader("📋 Pending Invoices (Not Received)")
+st.subheader("📋 Pending Deliveries (Not Received)")
 
 pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
 
