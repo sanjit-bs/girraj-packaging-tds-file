@@ -457,7 +457,7 @@ def load_delivery_data():
 delivery_df = load_delivery_data()
 
 # ======================================================
-# Runtime Session States
+# Runtime Session States & Initialization
 # ======================================================
 if "submit_success" not in st.session_state:
     st.session_state.submit_success = False
@@ -465,7 +465,7 @@ if "submit_success" not in st.session_state:
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 
-# New states to explicitly track and force autofill values
+# Explicit state initialization used by text inputs
 if "current_driver" not in st.session_state:
     st.session_state.current_driver = ""
 if "current_owner" not in st.session_state:
@@ -475,7 +475,7 @@ if st.session_state.submit_success:
     st.success("✅ Operation Executed Successfully")
     st.session_state.submit_success = False
 
-# Callback function to update input fields when selectbox shifts
+# Callback function to directly mutate the text inputs state
 def update_vehicle_details():
     sel = st.session_state[f"v_sel_{st.session_state.form_key}"]
     st.session_state.current_driver = VEHICLE_MASTER[sel]["driver"]
@@ -490,7 +490,6 @@ key_suffix = st.session_state.form_key
 
 col1, col2 = st.columns(2)
 with col1:
-    # Added on_change callback to trigger autofill immediately on select
     vehicle_selection = st.selectbox(
         "Vehicle No. *", 
         options=list(VEHICLE_MASTER.keys()),
@@ -511,18 +510,16 @@ with col2:
 
 col3, col4 = st.columns(2)
 with col3:
-    # Tied directly to session state value to guarantee reactive updates
+    # FIX: Explicit state mapping keys completely force text components to auto-populate
     driver_name = st.text_input(
         "Driver Name", 
-        value=st.session_state.current_driver,
-        key=f"delivery_entry_driver_{key_suffix}"
+        key="current_driver"
     )
 with col4:
-    # Tied directly to session state value to guarantee reactive updates
+    # FIX: Explicit state mapping keys completely force text components to auto-populate
     owner_name = st.text_input(
         "Owner Name", 
-        value=st.session_state.current_owner,
-        key=f"delivery_entry_owner_{key_suffix}"
+        key="current_owner"
     )
 
 company = st.selectbox(
@@ -547,7 +544,6 @@ if st.button("Submit Delivery", type="primary"):
     elif company == "Select":
         st.warning("Please choose a valid Company & Location.")
     else:
-        # Capture whatever is in the text fields (allows manual overrides)
         delivery_sheet.append_row([
             delivery_date.strftime("%d/%m/%Y"),   
             final_vehicle_no.strip().upper(),      
