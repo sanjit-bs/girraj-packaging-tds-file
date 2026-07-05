@@ -396,7 +396,6 @@ COLUMNS2 = [
     "Owner", "Company & Location", "Invoice Received", "Remark"
 ]
 
-# New Column Config definition for Worksheet 3
 COLUMNS3 = [
     "Date", "Company", "Invoice No.", "Taxable Value", 
     "SGST", "CGST", "Total GST", "Total Value"
@@ -460,7 +459,6 @@ def load_delivery_data():
         df[col] = df[col].astype(str).str.strip()
     return df
 
-# NEW: Read-cache pipeline for Worksheet 3 (Inv_Value)
 @st.cache_data
 def load_invoice_value_data():
     records = inv_value_sheet.get_all_records()
@@ -474,7 +472,7 @@ def load_invoice_value_data():
     return df
 
 delivery_df = load_delivery_data()
-inv_value_df = load_invoice_value_data()  # Loaded financial dataframe
+inv_value_df = load_invoice_value_data()
 
 # ======================================================
 # Auto-Increment Sequence Logic
@@ -529,7 +527,12 @@ with tab1:
         vehicle_selection = st.selectbox("Vehicle No. *", options=list(VEHICLE_MASTER.keys()), key=f"v_sel_{key_suffix}", on_change=update_vehicle_details)
         final_vehicle_no = st.text_input("Manual Vehicle No. *", key=f"v_manual_{key_suffix}") if vehicle_selection == "Others" else vehicle_selection
     with col2:
-        invoice_no = st.text_input("Invoice Number *", key="current_invoice")
+        # FIX: Separation of key logic and fallback value logic
+        invoice_no = st.text_input(
+            "Invoice Number *", 
+            value=st.session_state.current_invoice,
+            key=f"delivery_entry_invoice_field_{key_suffix}"
+        )
 
     col3, col4 = st.columns(2)
     with col3: driver_name = st.text_input("Driver Name", key="current_driver")
@@ -564,7 +567,12 @@ with tab2:
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        fin_invoice_no = st.text_input("Invoice Number *", value=st.session_state.current_invoice, key=f"fin_inv_no_{key_suffix_fin}")
+        # FIX: Separation of key logic and fallback value logic
+        fin_invoice_no = st.text_input(
+            "Invoice Number *", 
+            value=st.session_state.current_invoice, 
+            key=f"fin_invoice_field_{key_suffix_fin}"
+        )
     with col_f2:
         fin_company = st.selectbox("Company *", options=COMPANY_OPTIONS, key=f"fin_company_{key_suffix_fin}")
         
@@ -635,7 +643,7 @@ else:
                 st.rerun()
 
 # ======================================================
-# NEW UI SECTION: Company Wise Bill Summary & Export
+# UI Section: Company Wise Bill Summary & Export
 # ======================================================
 st.markdown("---")
 st.subheader("🔍 Company Wise Bill Value Summary")
@@ -643,11 +651,9 @@ st.subheader("🔍 Company Wise Bill Value Summary")
 if inv_value_df.empty:
     st.info("No corporate financial billing information available yet.")
 else:
-    # 1. Filter Dropdown Configuration Selector
     filter_options = ["All Companies"] + [c for c in COMPANY_OPTIONS if c != "Select"]
     selected_filter_company = st.selectbox("Select Company to View Breakdown", options=filter_options, key="bill_summary_filter_comp")
     
-    # 2. Extract and Isolate target analytics
     if selected_filter_company == "All Companies":
         filtered_financial_df = inv_value_df
     else:
@@ -656,12 +662,10 @@ else:
     if filtered_financial_df.empty:
         st.warning(f"No logged transactions found matching {selected_filter_company}.")
     else:
-        # Convert numeric rows down to float targets safely to prevent rendering artifacts
         numeric_cols = ["Taxable Value", "SGST", "CGST", "Total GST", "Total Value"]
         for col in numeric_cols:
             filtered_financial_df[col] = pd.to_numeric(filtered_financial_df[col], errors="coerce").fillna(0.0)
             
-        # 3. Structural KPI Metrics Blocks Layout
         sum_taxable = filtered_financial_df["Taxable Value"].sum()
         sum_total_gst = filtered_financial_df["Total GST"].sum()
         sum_total_val = filtered_financial_df["Total Value"].sum()
@@ -671,7 +675,6 @@ else:
         m_col2.metric("Accumulated GST Collected", f"₹ {sum_total_gst:,.2f}")
         m_col3.metric("Gross Aggregate Valuation", f"₹ {sum_total_val:,.2f}")
         
-        # 4. View Interactive Tabular Elements Panel
         st.dataframe(
             filtered_financial_df,
             column_config={
@@ -685,7 +688,6 @@ else:
             hide_index=True
         )
         
-        # 5. Native Native CSV compilation string exporter
         csv_data = filtered_financial_df.to_csv(index=False).encode('utf-8')
         
         st.download_button(
