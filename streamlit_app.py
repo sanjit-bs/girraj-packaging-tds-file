@@ -390,17 +390,10 @@ st.download_button(
 WORKSHEET_NAME2 = "Delivery_Record"
 
 COLUMNS2 = [
-    "Date",
-    "Vehicle No.",
-    "Invoice No.",
-    "Driver",
-    "Owner",
-    "Company & Location",
-    "Invoice Received",  
-    "Remark"
+    "Date", "Vehicle No.", "Invoice No.", "Driver", 
+    "Owner", "Company & Location", "Invoice Received", "Remark"
 ]
 
-# NEW: Pre-defined company dropdown list items
 COMPANY_OPTIONS = [
     "Select",
     "Kamal’s cake (Dhulagori)",
@@ -412,6 +405,19 @@ COMPANY_OPTIONS = [
     "Top notch (Gaighata)",
     "Cold Roll (Gaighata)"
 ]
+
+# NEW: Master Data Mapping for Vehicles, Drivers, and Owners
+VEHICLE_MASTER = {
+    "Select": {"driver": "", "owner": ""},
+    "WB23C6784": {"driver": "Mangal", "owner": "D Biswas"},
+    "WB35L6773": {"driver": "Raja", "owner": "D Biswas"},
+    "WB25G3488": {"driver": "Babu", "owner": "D Biswas"},
+    "WB25W1226": {"driver": "Sanjay", "owner": "D Biswas"},
+    "WB25P9492": {"driver": "Badal", "owner": "D Biswas"},
+    "WB25H7255": {"driver": "", "owner": "Chotu"},
+    "WB25H5255": {"driver": "", "owner": "Chotu"},
+    "Others": {"driver": "", "owner": ""}
+}
 
 # ======================================================
 # Cached Database Connectors
@@ -473,17 +479,43 @@ key_suffix = st.session_state.form_key
 
 col1, col2 = st.columns(2)
 with col1:
-    vehicle_no = st.text_input("Vehicle No. *", key=f"delivery_entry_vehicle_{key_suffix}")
+    # Changed to dropdown selector
+    vehicle_selection = st.selectbox(
+        "Vehicle No. *", 
+        options=list(VEHICLE_MASTER.keys()),
+        key=f"delivery_entry_vehicle_sel_{key_suffix}"
+    )
+    
+    # Handle manual entry if "Others" is selected
+    if vehicle_selection == "Others":
+        final_vehicle_no = st.text_input(
+            "Enter Manual Vehicle No. *", 
+            key=f"delivery_entry_vehicle_manual_{key_suffix}"
+        )
+    else:
+        final_vehicle_no = vehicle_selection
+
 with col2:
     invoice_no = st.text_input("Invoice Number *", key=f"delivery_entry_invoice_{key_suffix}")
 
+# Pull pre-filled driver and owner details based on selection
+default_driver = VEHICLE_MASTER[vehicle_selection]["driver"]
+default_owner = VEHICLE_MASTER[vehicle_selection]["owner"]
+
 col3, col4 = st.columns(2)
 with col3:
-    driver_name = st.text_input("Driver Name", key=f"delivery_entry_driver_{key_suffix}")
+    driver_name = st.text_input(
+        "Driver Name", 
+        value=default_driver,
+        key=f"delivery_entry_driver_{key_suffix}"
+    )
 with col4:
-    owner_name = st.text_input("Owner Name", key=f"delivery_entry_owner_{key_suffix}")
+    owner_name = st.text_input(
+        "Owner Name", 
+        value=default_owner,
+        key=f"delivery_entry_owner_{key_suffix}"
+    )
 
-# MODIFIED: Swapped text_input out for selectbox using your options
 company = st.selectbox(
     "Company & Location *", 
     options=COMPANY_OPTIONS,
@@ -497,17 +529,18 @@ delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"deliver
 # Submission Process
 # -----------------------------
 if st.button("Submit Record", type="primary"):
-    if vehicle_no.strip() == "":
-        st.warning("Please enter Vehicle Number.")
+    if vehicle_selection == "Select":
+        st.warning("Please select a Vehicle Number.")
+    elif final_vehicle_no.strip() == "":
+        st.warning("Please enter the Manual Vehicle Number.")
     elif invoice_no.strip() == "":
         st.warning("Please enter Invoice Number.")
-    elif company == "Select":  # <-- NEW VALIDATION CHECK
+    elif company == "Select":
         st.warning("Please choose a valid Company & Location.")
-    # Note: selectbox handles validation by default since an option is always selected
     else:
         delivery_sheet.append_row([
             delivery_date.strftime("%d/%m/%Y"),   # Date
-            vehicle_no.strip(),                    # Vehicle No.
+            final_vehicle_no.strip().upper(),      # Vehicle No. (forced uppercase for consistency)
             invoice_no.strip(),                    # Invoice No.
             driver_name.strip(),                   # Driver
             owner_name.strip(),                    # Owner
@@ -525,7 +558,7 @@ if st.button("Submit Record", type="primary"):
 # UI Section: Pending Deliveries Management
 # ======================================================
 st.markdown("---")
-st.subheader("📋 Pending Invoice (Not Received)")
+st.subheader("📋 Pending Invoices (Not Received)")
 
 pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
 
