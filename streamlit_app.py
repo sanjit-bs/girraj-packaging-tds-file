@@ -584,12 +584,18 @@ with tab2:
         # NEW: Round up / down field accepting both positive and negative increments
         round_off = st.number_input("Round Up/Off (+/-)", value=0.0, step=0.01, format="%.2f", key=f"fin_round_{key_suffix_fin}")
     
-    # Base calculation layer
-    sgst_val = taxable_value * 0.025
-    cgst_val = taxable_value * 0.025
+   # 1. Calculate the raw values
+    sgst_raw = taxable_value * 0.025
+    cgst_raw = taxable_value * 0.025
+
+   # 2. Force round each component immediately to 2 decimal places
+    sgst_val = round(sgst_raw, 2)
+    cgst_val = round(cgst_raw, 2)
+
+   # 3. Sum the rounded components so there are no hidden decimals
     total_gst = sgst_val + cgst_val
-    
-    # MODIFIED: Final value now incorporates your manual +/- adjustment
+
+   # 4. Calculate final total value smoothly
     total_value = taxable_value + total_gst + round_off
 
     st.markdown("### 📊 Live Tax Calculation Breakdown")
