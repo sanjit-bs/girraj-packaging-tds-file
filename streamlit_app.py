@@ -499,7 +499,7 @@ with col1:
     
     if vehicle_selection == "Others":
         final_vehicle_no = st.text_input(
-            "Enter Manual Vehicle No. *", 
+            "Enter Vehicle No. Manualy*", 
             key=f"delivery_entry_vehicle_manual_{key_suffix}"
         )
     else:
