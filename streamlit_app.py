@@ -443,7 +443,7 @@ def connect_invoice_value_sheet():
 delivery_sheet = connect_delivery_sheet()
 inv_value_sheet = connect_invoice_value_sheet()
 
-@st.cache_data
+@st.cache_data(ttl=10)
 def load_delivery_data():
     records = delivery_sheet.get_all_records()
     if not records:
@@ -459,7 +459,7 @@ def load_delivery_data():
         df[col] = df[col].astype(str).str.strip()
     return df
 
-@st.cache_data
+@st.cache_data(ttl=10)
 def load_invoice_value_data():
     records = inv_value_sheet.get_all_records()
     if not records:
