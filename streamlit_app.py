@@ -389,7 +389,6 @@ st.download_button(
 
 WORKSHEET_NAME2 = "Delivery_Record"
 
-# Clean global configuration using updated target column label
 COLUMNS2 = [
     "Date",
     "Vehicle No.",
@@ -397,14 +396,26 @@ COLUMNS2 = [
     "Driver",
     "Owner",
     "Company & Location",
-    "Invoice Received",  # <-- Updated column name
+    "Invoice Received",  
     "Remark"
+]
+
+# NEW: Pre-defined company dropdown list items
+COMPANY_OPTIONS = [
+    "Kamal’s cake (Dhulagori)",
+    "Kamal’s Ice Cream (Dhulagori)",
+    "Kamals ORL O (Dhulagori)",
+    "Kamals Ice Cream (Shaoraphuli, ”Adila”)",
+    "Agarwal Food Product (Sankrail)",
+    "Pamir Ice Cream (Raiganj)",
+    "Top notch (Gaighata)",
+    "Cold Roll (Gaighata)"
 ]
 
 # ======================================================
 # Cached Database Connectors
 # ======================================================
-@st.cache_resource(ttl=3600)  # Added TTL to prevent auth token expiration crashes
+@st.cache_resource(ttl=3600)  
 def connect_delivery_sheet():
     creds = Credentials.from_service_account_info(
         st.secrets["gcp_service_account"],
@@ -418,46 +429,25 @@ delivery_sheet = connect_delivery_sheet()
 @st.cache_data
 def load_delivery_data():
     records = delivery_sheet.get_all_records()
-    
     if not records:
         return pd.DataFrame(columns=COLUMNS2)
 
     df = pd.DataFrame(records)
-
-    # Remove extra spaces from column names
     df.columns = df.columns.str.strip()
 
-    # Create missing columns if required
     for col in COLUMNS2:
         if col not in df.columns:
             df[col] = ""
 
     df = df[COLUMNS2]
+    df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce")
 
-    # Convert Date column cleanly
-    df["Date"] = pd.to_datetime(
-        df["Date"],
-        format="%d/%m/%Y",
-        errors="coerce"
-    )
-
-    # Clean text columns to avoid runtime errors
-    text_cols = [
-        "Vehicle No.",
-        "Invoice No.",
-        "Driver",
-        "Owner",
-        "Company & Location",
-        "Invoice Received",
-        "Remark"
-    ]
-
+    text_cols = ["Vehicle No.", "Invoice No.", "Driver", "Owner", "Company & Location", "Invoice Received", "Remark"]
     for col in text_cols:
         df[col] = df[col].astype(str).str.strip()
 
     return df
 
-# Fetch tracking dataframe from operational cache
 delivery_df = load_delivery_data()
 
 # ======================================================
@@ -469,7 +459,6 @@ if "submit_success" not in st.session_state:
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 
-# Persistent notification render across sequential script re-runs
 if st.session_state.submit_success:
     st.success("✅ Operation Executed Successfully")
     st.session_state.submit_success = False
@@ -493,7 +482,13 @@ with col3:
 with col4:
     owner_name = st.text_input("Owner Name", key=f"delivery_entry_owner_{key_suffix}")
 
-company = st.text_input("Company & Location *", key=f"delivery_entry_company_{key_suffix}")
+# MODIFIED: Swapped text_input out for selectbox using your options
+company = st.selectbox(
+    "Company & Location *", 
+    options=COMPANY_OPTIONS,
+    key=f"delivery_entry_company_{key_suffix}"
+)
+
 remark = st.text_area("Remark", key=f"delivery_entry_remark_{key_suffix}")
 delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_entry_date_input_{key_suffix}")
 
@@ -505,10 +500,8 @@ if st.button("Submit Delivery", type="primary"):
         st.warning("Please enter Vehicle Number.")
     elif invoice_no.strip() == "":
         st.warning("Please enter Invoice Number.")
-    elif company.strip() == "":
-        st.warning("Please enter Company & Location.")
+    # Note: selectbox handles validation by default since an option is always selected
     else:
-        # Appends structured data sequentially to Google Sheets
         delivery_sheet.append_row([
             delivery_date.strftime("%d/%m/%Y"),   # Date
             vehicle_no.strip(),                    # Vehicle No.
@@ -516,14 +509,11 @@ if st.button("Submit Delivery", type="primary"):
             driver_name.strip(),                   # Driver
             owner_name.strip(),                    # Owner
             company.strip(),                       # Company & Location
-            "No",                                  # Invoice Received (Defaulting to "No" here)
+            "No",                                  # Invoice Received
             remark.strip()                         # Remark
         ])
 
-        # Purge caching metrics to sync tracking records dynamically 
         st.cache_data.clear()
-
-        # Update controls
         st.session_state.submit_success = True
         st.session_state.form_key += 1
         st.rerun()
@@ -534,7 +524,6 @@ if st.button("Submit Delivery", type="primary"):
 st.markdown("---")
 st.subheader("📋 Pending Deliveries (Not Received)")
 
-# String operations aligned to match against lowercase targets safely
 pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
 
 if pending_df.empty:
@@ -542,7 +531,6 @@ if pending_df.empty:
 else:
     st.write("Check the box next to an invoice to mark it as **Received (Yes)**:")
     
-    # Structural Layout Header Elements
     col_h1, col_h2, col_h3, col_h4 = st.columns([1.5, 1.5, 3, 1])
     with col_h1: st.markdown("**Invoice No.**")
     with col_h2: st.markdown("**Vehicle No.**")
@@ -550,9 +538,7 @@ else:
     with col_h4: st.markdown("**Action**")
     st.markdown("---")
 
-    # Interactive loops through operational pending elements
     for idx, row in pending_df.iterrows():
-        # Core alignment logic: row 1 is structural header, index 0 is row 2
         gs_row = idx + 2
         
         col_inv, col_veh, col_comp, col_act = st.columns([1.5, 1.5, 3, 1])
@@ -564,15 +550,8 @@ else:
         with col_comp:
             st.write(row["Company & Location"])
         with col_act:
-            # Safe runtime tracking using deep isolation string variables
             if st.checkbox("Receive", key=f"recv_approval_act_{gs_row}"):
-                
-                # Modifies exact physical cell located inside Google Sheets Column 7
                 delivery_sheet.update_cell(gs_row, 7, "Yes")
-                
-                # Clear structural data caching for fresh application load
                 st.cache_data.clear()
-                
-                # Elevate execution runtime states
                 st.session_state.submit_success = True
                 st.rerun()
