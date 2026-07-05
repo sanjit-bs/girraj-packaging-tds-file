@@ -456,26 +456,37 @@ if st.session_state.submit_success:
 # -----------------------------
 # New Delivery Entry
 # -----------------------------
+# -----------------------------
+# New Delivery Entry
+# -----------------------------
 st.subheader("New Delivery Entry")
 
 key_suffix = st.session_state.form_key
 
 col1, col2 = st.columns(2)
 with col1:
-    vehicle_no = st.text_input("Vehicle No. *", key=f"delivery_vehicle_{key_suffix}")
+    # Changed to unique prefix: delivery_entry_vehicle_
+    vehicle_no = st.text_input("Vehicle No. *", key=f"delivery_entry_vehicle_{key_suffix}")
 with col2:
-    invoice_no = st.text_input("Invoice Number *", key=f"delivery_invoice_{key_suffix}")
+    # Changed to unique prefix: delivery_entry_invoice_
+    invoice_no = st.text_input("Invoice Number *", key=f"delivery_entry_invoice_{key_suffix}")
 
 col3, col4 = st.columns(2)
 with col3:
-    driver_name = st.text_input("Driver Name", key=f"delivery_driver_{key_suffix}")
+    # Changed to unique prefix: delivery_entry_driver_
+    driver_name = st.text_input("Driver Name", key=f"delivery_entry_driver_{key_suffix}")
 with col4:
-    owner_name = st.text_input("Owner Name", key=f"delivery_owner_{key_suffix}")
+    # Changed to unique prefix: delivery_entry_owner_
+    owner_name = st.text_input("Owner Name", key=f"delivery_entry_owner_{key_suffix}")
 
-company = st.text_input("Company & Location *", key=f"delivery_company_{key_suffix}")
-remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
-delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_input_{key_suffix}")
+# Changed to unique prefix: delivery_entry_company_
+company = st.text_input("Company & Location *", key=f"delivery_entry_company_{key_suffix}")
 
+# CRITICAL FIX: Changed to unique prefix: delivery_entry_remark_
+remark = st.text_area("Remark", key=f"delivery_entry_remark_{key_suffix}")
+
+# Changed to unique prefix: delivery_entry_date_input_
+delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_entry_date_input_{key_suffix}")
 # -----------------------------
 # Submit Button
 # -----------------------------
