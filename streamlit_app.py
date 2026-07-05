@@ -401,9 +401,9 @@ SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
 # Delivery Record Sheet
 # ======================================================
 
-WORKSHEET_NAME2 = "Delivery_Record"
+WORKSHEET_NAME = "Delivery_Record"
 
-COLUMNS2 = [
+COLUMNS = [
     "Date",
     "Vehicle No.",
     "Invoice No.",
@@ -424,7 +424,7 @@ def connect_delivery_sheet():
 
     client = gspread.authorize(creds)
 
-    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME2)
+    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME)
 
 
 delivery_sheet = connect_delivery_sheet()
@@ -435,7 +435,7 @@ def load_delivery_data():
     records = delivery_sheet.get_all_records()
 
     if not records:
-        return pd.DataFrame(columns=COLUMNS2)
+        return pd.DataFrame(columns=COLUMNS)
 
     df = pd.DataFrame(records)
 
