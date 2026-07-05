@@ -500,6 +500,8 @@ if st.button("Submit Delivery", type="primary"):
         st.warning("Please enter Vehicle Number.")
     elif invoice_no.strip() == "":
         st.warning("Please enter Invoice Number.")
+    elif company == "Select":  # <-- NEW VALIDATION CHECK
+        st.warning("Please choose a valid Company & Location.")
     # Note: selectbox handles validation by default since an option is always selected
     else:
         delivery_sheet.append_row([
