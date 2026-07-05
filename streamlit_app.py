@@ -402,6 +402,7 @@ COLUMNS2 = [
 
 # NEW: Pre-defined company dropdown list items
 COMPANY_OPTIONS = [
+    "Select",
     "Kamal’s cake (Dhulagori)",
     "Kamal’s Ice Cream (Dhulagori)",
     "Kamals ORL O (Dhulagori)",
@@ -495,7 +496,7 @@ delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"deliver
 # -----------------------------
 # Submission Process
 # -----------------------------
-if st.button("Submit Delivery", type="primary"):
+if st.button("Submit Record", type="primary"):
     if vehicle_no.strip() == "":
         st.warning("Please enter Vehicle Number.")
     elif invoice_no.strip() == "":
@@ -524,7 +525,7 @@ if st.button("Submit Delivery", type="primary"):
 # UI Section: Pending Deliveries Management
 # ======================================================
 st.markdown("---")
-st.subheader("📋 Pending Deliveries (Not Received)")
+st.subheader("📋 Pending Invoice (Not Received)")
 
 pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
 
