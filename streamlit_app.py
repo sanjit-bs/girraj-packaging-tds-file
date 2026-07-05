@@ -389,3 +389,101 @@ st.download_button(
     file_name="Payment_Report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
+######-----------------------------------------------------Transport Record Section------------------------------------------------------------#######
+
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
+WORKSHEET_NAME2 = "Delivery_Record"
+
+COLUMNS2 = [
+    "Date"
+    "Vhicle No.",
+    "Invoice No.",
+    "Driver",
+    "Owner",
+    "Company & Location" ,
+    "Received",
+    "Remark"
+]
+
+# -----------------------------
+# New Delivery Entry
+# -----------------------------
+st.subheader("New Delivery Entry")
+
+key_suffix = st.session_state.form_key
+
+col1, col2 = st.columns(2)
+
+with col1:
+    vehicle_no = st.text_input(
+        "Vehicle No *",
+        key=f"vehicle_{key_suffix}"
+    )
+
+with col2:
+    invoice_no = st.text_input(
+        "Invoice Number *",
+        key=f"invoice_{key_suffix}"
+    )
+
+col3, col4 = st.columns(2)
+
+with col3:
+    driver_name = st.text_input(
+        "Driver Name",
+        key=f"driver_{key_suffix}"
+    )
+
+with col4:
+    owner_name = st.text_input(
+        "Owner Name",
+        key=f"owner_{key_suffix}"
+    )
+
+company = st.text_input(
+    "Delivered Company",
+    key=f"company_{key_suffix}"
+)
+
+delivery_date = st.date_input(
+    "Delivery Date",
+    value=date.today(),
+    key=f"delivery_date_{key_suffix}"
+)
+
+# -----------------------------
+# Submit Button
+# -----------------------------
+if st.button("Submit Delivery", type="primary"):
+
+    if vehicle_no.strip() == "":
+        st.warning("Please enter Vehicle Number.")
+
+    elif invoice_no.strip() == "":
+        st.warning("Please enter Invoice Number.")
+
+    elif company.strip() == "":
+        st.warning("Please enter Delivered Company.")
+
+    else:
+
+        sheet.append_row([
+            vehicle_no.strip(),
+            invoice_no.strip(),
+            driver_name.strip(),
+            owner_name.strip(),
+            company.strip(),
+            delivery_date.strftime("%d/%m/%Y"),
+            "Pending",
+            ""
+        ])
+
+        st.session_state.submit_success = True
+        st.session_state.form_key += 1
+        st.rerun()
+
