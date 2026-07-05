@@ -92,7 +92,7 @@ if "form_key" not in st.session_state:
 
 
 st.title("GIRRAJ PACKAGING")
-st.subheader("Payment Entry and Dashboard")
+st.subheader("Database and Dashboard")
 
 if st.session_state.submit_success:
     st.success("✅ Record submitted successfully")
@@ -113,7 +113,7 @@ category_list = [
 # -----------------------------
 # New Payment Entry
 # -----------------------------
-st.subheader("New Payment Entry")
+st.subheader("New Payment Entry (TDS)")
 
 key_suffix = st.session_state.form_key
 
