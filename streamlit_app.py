@@ -483,3 +483,90 @@ if "submit_success" not in st.session_state:
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 
+# -----------------------------
+# New Delivery Entry
+# -----------------------------
+st.subheader("New Delivery Entry")
+
+key_suffix = st.session_state.form_key
+
+col1, col2 = st.columns(2)
+
+with col1:
+    vehicle_no = st.text_input(
+        "Vehicle No. *",
+        key=f"vehicle_{key_suffix}"
+    )
+
+with col2:
+    invoice_no = st.text_input(
+        "Invoice Number *",
+        key=f"invoice_{key_suffix}"
+    )
+
+col3, col4 = st.columns(2)
+
+with col3:
+    driver_name = st.text_input(
+        "Driver Name",
+        key=f"driver_{key_suffix}"
+    )
+
+with col4:
+    owner_name = st.text_input(
+        "Owner Name",
+        key=f"owner_{key_suffix}"
+    )
+
+company = st.text_input(
+    "Company & Location *",
+    key=f"company_{key_suffix}"
+)
+
+remark = st.text_area(
+    "Remark",
+    key=f"remark_{key_suffix}"
+)
+
+delivery_date = st.date_input(
+    "Delivery Date",
+    value=date.today(),
+    key=f"delivery_date_{key_suffix}"
+)
+
+# -----------------------------
+# Submit Button
+# -----------------------------
+if st.button("Submit Delivery", type="primary"):
+
+    if vehicle_no.strip() == "":
+        st.warning("Please enter Vehicle Number.")
+
+    elif invoice_no.strip() == "":
+        st.warning("Please enter Invoice Number.")
+
+    elif company.strip() == "":
+        st.warning("Please enter Company & Location.")
+
+    else:
+
+        delivery_sheet.append_row([
+            delivery_date.strftime("%d/%m/%Y"),   # Date
+            vehicle_no.strip(),                   # Vehicle No.
+            invoice_no.strip(),                   # Invoice No.
+            driver_name.strip(),                  # Driver
+            owner_name.strip(),                   # Owner
+            company.strip(),                      # Company & Location
+            "No",                                # Received
+            remark.strip()                        # Remark
+        ])
+
+        st.session_state.submit_success = True
+        st.session_state.form_key += 1
+
+        st.success("✅ Delivery Record Submitted Successfully")
+
+        st.rerun()
+
+
+
