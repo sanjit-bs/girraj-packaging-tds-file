@@ -389,11 +389,17 @@ st.download_button(
 ######-----------------------------------------------------Transport Record Section------------------------------------------------------------#######
 
 WORKSHEET_NAME2 = "Delivery_Record"
-WORKSHEET_NAME3 = "Inv_Value"  # <-- New Financial Worksheet Target
+WORKSHEET_NAME3 = "Inv_Value" 
 
 COLUMNS2 = [
     "Date", "Vehicle No.", "Invoice No.", "Driver", 
     "Owner", "Company & Location", "Invoice Received", "Remark"
+]
+
+# New Column Config definition for Worksheet 3
+COLUMNS3 = [
+    "Date", "Company", "Invoice No.", "Taxable Value", 
+    "SGST", "CGST", "Total GST", "Total Value"
 ]
 
 COMPANY_OPTIONS = [
@@ -454,7 +460,21 @@ def load_delivery_data():
         df[col] = df[col].astype(str).str.strip()
     return df
 
+# NEW: Read-cache pipeline for Worksheet 3 (Inv_Value)
+@st.cache_data
+def load_invoice_value_data():
+    records = inv_value_sheet.get_all_records()
+    if not records:
+        return pd.DataFrame(columns=COLUMNS3)
+    df = pd.DataFrame(records)
+    df.columns = df.columns.str.strip()
+    for col in COLUMNS3:
+        if col not in df.columns: df[col] = 0.0 if "Value" in col or "GST" in col else ""
+    df = df[COLUMNS3]
+    return df
+
 delivery_df = load_delivery_data()
+inv_value_df = load_invoice_value_data()  # Loaded financial dataframe
 
 # ======================================================
 # Auto-Increment Sequence Logic
@@ -544,24 +564,18 @@ with tab2:
     
     col_f1, col_f2 = st.columns(2)
     with col_f1:
-        # Pulls the exact same sequential +1 value automatically
         fin_invoice_no = st.text_input("Invoice Number *", value=st.session_state.current_invoice, key=f"fin_inv_no_{key_suffix_fin}")
     with col_f2:
-        # Pulls from the same master dropdown configuration list
         fin_company = st.selectbox("Company *", options=COMPANY_OPTIONS, key=f"fin_company_{key_suffix_fin}")
         
     fin_date = st.date_input("Invoice Date", value=date.today(), key=f"fin_date_{key_suffix_fin}")
-    
-    # Financial Input Numeric Collector
     taxable_value = st.number_input("Enter Taxable Value *", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"fin_taxable_{key_suffix_fin}")
     
-    # Core Mathematical Automation Layer (2.5% SGST + 2.5% CGST)
     sgst_val = taxable_value * 0.025
     cgst_val = taxable_value * 0.025
     total_gst = sgst_val + cgst_val
     total_value = taxable_value + total_gst
 
-    # Real-Time UI Calculations Dashboard Summary
     st.markdown("### 📊 Live Tax Calculation Breakdown")
     c_m1, c_m2, c_m3 = st.columns(3)
     c_m1.metric("SGST (2.5%)", f"₹ {sgst_val:,.2f}")
@@ -577,19 +591,10 @@ with tab2:
         elif fin_invoice_no.strip() == "":
             st.warning("Please ensure Invoice Number is not empty.")
         else:
-            # Appends calculated items to the rows of Worksheet 3: Inv_Value
             inv_value_sheet.append_row([
-                fin_date.strftime("%d/%m/%Y"),
-                fin_company.strip(),
-                fin_invoice_no.strip(),
-                round(taxable_value, 2),
-                round(sgst_val, 2),
-                round(cgst_val, 2),
-                round(total_gst, 2),
-                round(total_value, 2)
+                fin_date.strftime("%d/%m/%Y"), fin_company.strip(), fin_invoice_no.strip(),
+                round(taxable_value, 2), round(sgst_val, 2), round(cgst_val, 2), round(total_gst, 2), round(total_value, 2)
             ])
-            
-            # Synchronize across metrics
             st.cache_data.clear()
             fresh_df = load_delivery_data()
             st.session_state.current_invoice = get_next_invoice_number(fresh_df)
@@ -628,3 +633,65 @@ else:
                 st.session_state.current_invoice = get_next_invoice_number(fresh_df)
                 st.session_state.submit_success = True
                 st.rerun()
+
+# ======================================================
+# NEW UI SECTION: Company Wise Bill Summary & Export
+# ======================================================
+st.markdown("---")
+st.subheader("🔍 Company Wise Bill Value Summary")
+
+if inv_value_df.empty:
+    st.info("No corporate financial billing information available yet.")
+else:
+    # 1. Filter Dropdown Configuration Selector
+    filter_options = ["All Companies"] + [c for c in COMPANY_OPTIONS if c != "Select"]
+    selected_filter_company = st.selectbox("Select Company to View Breakdown", options=filter_options, key="bill_summary_filter_comp")
+    
+    # 2. Extract and Isolate target analytics
+    if selected_filter_company == "All Companies":
+        filtered_financial_df = inv_value_df
+    else:
+        filtered_financial_df = inv_value_df[inv_value_df["Company"].str.strip() == selected_filter_company]
+        
+    if filtered_financial_df.empty:
+        st.warning(f"No logged transactions found matching {selected_filter_company}.")
+    else:
+        # Convert numeric rows down to float targets safely to prevent rendering artifacts
+        numeric_cols = ["Taxable Value", "SGST", "CGST", "Total GST", "Total Value"]
+        for col in numeric_cols:
+            filtered_financial_df[col] = pd.to_numeric(filtered_financial_df[col], errors="coerce").fillna(0.0)
+            
+        # 3. Structural KPI Metrics Blocks Layout
+        sum_taxable = filtered_financial_df["Taxable Value"].sum()
+        sum_total_gst = filtered_financial_df["Total GST"].sum()
+        sum_total_val = filtered_financial_df["Total Value"].sum()
+        
+        m_col1, m_col2, m_col3 = st.columns(3)
+        m_col1.metric("Total Taxable Amt", f"₹ {sum_taxable:,.2f}")
+        m_col2.metric("Accumulated GST Collected", f"₹ {sum_total_gst:,.2f}")
+        m_col3.metric("Gross Aggregate Valuation", f"₹ {sum_total_val:,.2f}")
+        
+        # 4. View Interactive Tabular Elements Panel
+        st.dataframe(
+            filtered_financial_df,
+            column_config={
+                "Taxable Value": st.column_config.NumberColumn(format="₹ %.2f"),
+                "SGST": st.column_config.NumberColumn(format="₹ %.2f"),
+                "CGST": st.column_config.NumberColumn(format="₹ %.2f"),
+                "Total GST": st.column_config.NumberColumn(format="₹ %.2f"),
+                "Total Value": st.column_config.NumberColumn(format="₹ %.2f")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+        
+        # 5. Native Native CSV compilation string exporter
+        csv_data = filtered_financial_df.to_csv(index=False).encode('utf-8')
+        
+        st.download_button(
+            label="📥 Download Filtered Bill Report (CSV)",
+            data=csv_data,
+            file_name=f"bill_report_{selected_filter_company.replace(' ', '_').lower()}_{date.today().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            type="secondary"
+        )
