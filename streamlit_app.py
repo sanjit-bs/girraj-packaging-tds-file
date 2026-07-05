@@ -524,7 +524,7 @@ st.subheader("📋 Pending Deliveries (Not Received)")
 
 # Filter data to only show rows where Received is "No"
 # Using string cleaning to prevent issues with trailing spaces or casing
-pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
+pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "No"]
 
 if pending_df.empty:
     st.info("🎉 All deliveries have been successfully received!")
