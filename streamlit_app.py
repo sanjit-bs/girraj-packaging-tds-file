@@ -514,5 +514,54 @@ if st.button("Submit Delivery", type="primary"):
         st.session_state.form_key += 1
         st.rerun()
 
+# -----------------------------
+# Pending Deliveries Section
+# -----------------------------
+st.markdown("---")
+st.subheader("📋 Pending Deliveries (Not Received)")
 
+# Filter data to only show rows where Received is "No"
+# Using string cleaning to prevent issues with trailing spaces or casing
+pending_df = delivery_df[delivery_df["Received"].str.strip().str.lower() == "no"]
+
+if pending_df.empty:
+    st.info("🎉 All deliveries have been successfully received!")
+else:
+    st.write("Check the box next to an invoice to mark it as **Received (Yes)**:")
+    
+    # Create a clean tabular layout header
+    col_h1, col_h2, col_h3, col_h4 = st.columns([1.5, 1.5, 3, 1])
+    with col_h1: st.markdown("**Invoice No.**")
+    with col_h2: st.markdown("**Vehicle No.**")
+    with col_h3: st.markdown("**Company & Location**")
+    with col_h4: st.markdown("**Action**")
+    st.markdown("---")
+
+    # Loop through each pending item
+    for idx, row in pending_df.iterrows():
+        # Map DataFrame index back to the exact Google Sheet row number 
+        # (e.g., DF Index 0 + 2 = Google Sheet Row 2)
+        gs_row = idx + 2
+        
+        col_inv, col_veh, col_comp, col_act = st.columns([1.5, 1.5, 3, 1])
+        
+        with col_inv:
+            st.write(row["Invoice No."])
+        with col_veh:
+            st.write(row["Vehicle No."])
+        with col_comp:
+            st.write(row["Company & Location"])
+        with col_act:
+            # Dynamic unique key prevents widget duplicate errors
+            if st.checkbox("Receive", key=f"recv_action_{gs_row}"):
+                
+                # Column 7 corresponds to the "Received" column in your sheet configuration
+                delivery_sheet.update_cell(gs_row, 7, "Yes")
+                
+                # Clear cached data so the app pulls the fresh sheet structure on refresh
+                st.cache_data.clear()
+                
+                # Set success state and force immediate visual update
+                st.session_state.submit_success = True
+                st.rerun()
 
