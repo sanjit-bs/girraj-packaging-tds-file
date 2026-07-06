@@ -536,19 +536,20 @@ with tab1:
 
     col3, col4 = st.columns(2)
     with col3:
-    # FIX: Use dynamic suffix key and map the value parameter to session_state
-    driver_name = st.text_input(
-        "Driver", 
-        value=st.session_state.current_driver,
-        key=f"driver_field_{key_suffix}"
-    )
+        # FIX: Aligned inside block
+        driver_name = st.text_input(
+            "Driver", 
+            value=st.session_state.current_driver,
+            key=f"driver_field_{key_suffix}"
+        )
     with col4:
-    # FIX: Use dynamic suffix key and map the value parameter to session_state
-    owner_name = st.text_input(
-        "Owner", 
-        value=st.session_state.current_owner,
-        key=f"owner_field_{key_suffix}"
-    )
+        # FIX: Aligned inside block
+        owner_name = st.text_input(
+            "Owner", 
+            value=st.session_state.current_owner,
+            key=f"owner_field_{key_suffix}"
+        )
+        
     company = st.selectbox("Company & Location *", options=COMPANY_OPTIONS, key=f"delivery_company_{key_suffix}")
     remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
     delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}")
@@ -592,22 +593,21 @@ with tab2:
     with col_tax:
         taxable_value = st.number_input("Enter Taxable Value *", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"fin_taxable_{key_suffix_fin}")
     with col_round:
-        # NEW: Round up / down field accepting both positive and negative increments
         round_off = st.number_input("Round Up/Off (+/-)", value=0.0, step=0.01, format="%.2f", key=f"fin_round_{key_suffix_fin}")
     
-   # 1. Calculate the raw values
+    # 1. Calculate the raw values
     sgst_raw = taxable_value * 0.025
     cgst_raw = taxable_value * 0.025
 
-   # 2. Force round each component immediately to 2 decimal places
+    # 2. Force round each component immediately to 2 decimal places
     sgst_val = round(sgst_raw, 2)
     cgst_val = round(cgst_raw, 2)
 
-   # 3. Sum the rounded components so there are no hidden decimals
+    # 3. Sum the rounded components so there are no hidden decimals
     total_gst = sgst_val + cgst_val
 
-   # 4. Calculate final total value smoothly
-    total_value = taxable_value + total_gst + round_off
+    # 4. Calculate final total value smoothly
+    total_value = round(taxable_value + total_gst + round_off, 2)
 
     st.markdown("### 📊 Live Tax Calculation Breakdown")
     c_m1, c_m2, c_m3 = st.columns(3)
@@ -615,7 +615,6 @@ with tab2:
     c_m2.metric("CGST (2.5%)", f"₹ {cgst_val:,.2f}")
     c_m3.metric("Total GST (5%)", f"₹ {total_gst:,.2f}")
     
-    # UI displays the net total incorporating your round-off adjustment
     st.metric("📦 Final Total Value (Taxable + GST + Round Off)", f"₹ {total_value:,.2f}")
 
     if st.button("Submit Financial Value Log", type="primary"):
@@ -626,7 +625,6 @@ with tab2:
         elif fin_invoice_no.strip() == "":
             st.warning("Please ensure Invoice Number is not empty.")
         else:
-            # Appends calculated items along with the round off item to Worksheet 3
             inv_value_sheet.append_row([
                 fin_date.strftime("%d/%m/%Y"), 
                 fin_company.strip(), 
@@ -635,7 +633,7 @@ with tab2:
                 round(sgst_val, 2), 
                 round(cgst_val, 2), 
                 round(total_gst, 2),
-                round(round_off, 2),   # NEW COLUMN CELL DATA DETECTED
+                round(round_off, 2),   
                 round(total_value, 2)
             ])
             st.cache_data.clear()
@@ -643,7 +641,7 @@ with tab2:
             st.session_state.current_invoice = get_next_invoice_number(fresh_df)
             st.session_state.submit_success = True
             st.session_state.form_key += 1
-            st.rerun()
+            st.rerun() # FIX: Removed trailing comma
 # ======================================================
 # UI Section: Pending Deliveries Management
 # ======================================================
