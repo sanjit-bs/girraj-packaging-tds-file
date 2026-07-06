@@ -516,7 +516,7 @@ def update_vehicle_details():
 # ======================================================
 # Tab Layout Organization
 # ======================================================
-tab1, tab2 = st.tabs(["🚚 Delivery Registry Form", "💰 Financial Value Form"])
+tab1, tab2 = st.tabs(["🚚 Delivery Record", "💰 Invoice Value Record"])
 
 with tab1:
     st.subheader("New Delivery Entry")
