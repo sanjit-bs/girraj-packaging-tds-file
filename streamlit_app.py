@@ -777,16 +777,15 @@ def load_stock_data():
             df[col] = 0 if "Total" in col else ""
     return df[COLUMNS4]
 
-# Load current stock history ledger dataframe
+# Load current stock master table dataframe
 stock_df = load_stock_data()
 
-st.subheader("📦 Company-Wise Product Stock Registry")
+st.subheader("📦 Live Product Stock Master (Modification Basis)")
 key_suffix_stock = st.session_state.form_key
 
 col_s1, col_s2, col_s3 = st.columns(3)
 
 with col_s1:
-    # 1. Company Selection
     stock_company = st.selectbox(
         "Company *", 
         options=["Select", "Kamal’s Ice Cream (Dhulagori)", "Agarwal Food Product (Sankrail)"],
@@ -794,7 +793,6 @@ with col_s1:
     )
 
 with col_s2:
-    # 2. Dynamic Dependent Product Dropdown Allocation
     if "Kamal" in stock_company:
         product_options = PRODUCTS_KAMAL
     elif "Agarwal" in stock_company:
@@ -809,55 +807,71 @@ with col_s2:
     )
 
 with col_s3:
-    stock_date = st.date_input("Log Date", value=date.today(), key=f"stock_date_{key_suffix_stock}")
+    stock_date = st.date_input("Last Update Date", value=date.today(), key=f"stock_date_{key_suffix_stock}")
 
 col_qty1, col_qty2 = st.columns(2)
 with col_qty1:
-    prod_qty = st.number_input("Total Production Entry (Boxes/Inners)", min_value=0, value=0, step=1, key=f"prod_qty_{key_suffix_stock}")
+    new_prod_input = st.number_input("Add to Production Quantity", min_value=0, value=0, step=1, key=f"add_prod_{key_suffix_stock}")
 with col_qty2:
-    deliv_qty = st.number_input("Total Delivery Entry (Boxes/Inners)", min_value=0, value=0, step=1, key=f"deliv_qty_{key_suffix_stock}")
+    new_deliv_input = st.number_input("Add to Delivery Quantity", min_value=0, value=0, step=1, key=f"add_deliv_{key_suffix_stock}")
 
-# 3. Dynamic Balance Calculation Logic
-current_balance = 0
+# --- Core Dynamic Row-Locating Logic ---
+existing_row_idx = None
+current_total_prod = 0
+current_total_deliv = 0
+
 if not stock_df.empty and stock_product != "Select":
-    # Filter historical entries for this specific company and product to find running total balance
-    matching_history = stock_df[
-        (stock_df["Company"] == stock_company) & 
-        (stock_df["Product"] == stock_product)
-    ]
-    if not matching_history.empty:
-        # Fetch the very last calculated stock value from rows
-        current_balance = pd.to_numeric(matching_history.iloc[-1]["Total Stock"], errors="coerce")
-        if pd.isna(current_balance):
-            current_balance = 0
+    # Search for an existing row matching Company and Product
+    match_condition = (stock_df["Company"] == stock_company) & (stock_df["Product"] == stock_product)
+    matching_rows = stock_df[match_condition]
+    
+    if not matching_rows.empty:
+        # Save the dataframe index to calculate the spreadsheet row number later
+        existing_row_idx = matching_rows.index[0]
+        current_total_prod = int(pd.to_numeric(matching_rows.iloc[0]["Total Production"], errors="coerce") or 0)
+        current_total_deliv = int(pd.to_numeric(matching_rows.iloc[0]["Total Delivery"], errors="coerce") or 0)
 
-# Final stock balancing calculation formula logic
-calculated_total_stock = current_balance + prod_qty - deliv_qty
+# Calculate updated accumulated totals
+updated_total_prod = current_total_prod + new_prod_input
+updated_total_deliv = current_total_deliv + new_deliv_input
+updated_total_stock = updated_total_prod - updated_total_deliv
 
-# Metrics Display Layout
-st.markdown("### 📊 Live Inventory Balance Adjustments")
+# Live Metrics Dashboard UI Summary
+st.markdown("### 📊 Preview of Live Inventory Updates")
 sm_col1, sm_col2, sm_col3 = st.columns(3)
-sm_col1.metric("Previous Closing Balance", f"{current_balance} units")
-sm_col2.metric("Net Change", f"+{prod_qty - deliv_qty} units", delta=int(prod_qty - deliv_qty))
-sm_col3.metric("New Computed Total Stock", f"{calculated_total_stock} units")
+sm_col1.metric("Updated Total Production", f"{updated_total_prod} units", delta=f"+{new_prod_input}" if new_prod_input else None)
+sm_col2.metric("Updated Total Delivery", f"{updated_total_deliv} units", delta=f"+{new_deliv_input}" if new_deliv_input else None)
+sm_col3.metric("Live Total Stock Balance", f"{updated_total_stock} units")
 
-if st.button("Submit Stock Entry Log", type="primary"):
+if st.button("Update Stock Balance", type="primary"):
     if stock_company == "Select":
         st.warning("Please choose a valid Company.")
     elif stock_product == "Select":
         st.warning("Please select a target Product Item.")
-    elif prod_qty == 0 and deliv_qty == 0:
-        st.warning("Production and Delivery cannot both be zero.")
+    elif new_prod_input == 0 and new_deliv_input == 0:
+        st.warning("Please enter an amount to add to either Production or Delivery.")
     else:
-        # Appends rows securely to the Worksheet 4 Google Spreadsheet ledger
-        stock_sheet.append_row([
+        row_payload = [
             stock_date.strftime("%d/%m/%Y"),
             stock_company.strip(),
             stock_product.strip(),
-            int(prod_qty),
-            int(deliv_qty),
-            int(calculated_total_stock)
-        ])
+            int(updated_total_prod),
+            int(updated_total_deliv),
+            int(updated_total_stock)
+        ]
+        
+        if existing_row_idx is not None:
+            # Match found! Calculate spreadsheet row (gspread uses 1-based indexing, add 2 for header offset)
+            gs_row_num = int(existing_row_idx) + 2
+            
+            # Select range matching columns 1 through 6 on that row and update it
+            cell_range = f"A{gs_row_num}:F{gs_row_num}"
+            stock_sheet.update(cell_range, [row_payload])
+            st.toast("✏️ Existing product stock row updated successfully!")
+        else:
+            # Match not found! Append a brand-new row for this item
+            stock_sheet.append_row(row_payload)
+            st.toast("✨ New product added to stock sheet successfully!")
         
         st.cache_data.clear()
         st.session_state.submit_success = True
@@ -865,15 +879,14 @@ if st.button("Submit Stock Entry Log", type="primary"):
         st.rerun()
 
 # ======================================================
-# Real-Time Inventory Stock Viewer Section
+# Real-Time Master Stock Viewer Window
 # ======================================================
 st.markdown("---")
-st.subheader("📋 Current Ledger Stock Balances")
+st.subheader("📋 Master Inventory Stock Status")
 
 if stock_df.empty:
-    st.info("No logged production inventory details available yet.")
+    st.info("No product stock configurations found in your Google Sheet.")
 else:
-    # Quick-view filter options
     st.dataframe(
         stock_df,
         use_container_width=True,
