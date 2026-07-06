@@ -509,9 +509,17 @@ if st.session_state.submit_success:
     st.session_state.submit_success = False
 
 def update_vehicle_details():
+    # 1. Fetch the selected vehicle from the selectbox
     sel = st.session_state[f"v_sel_{st.session_state.form_key}"]
+    
+    # 2. Push the master values directly into the session states
     st.session_state.current_driver = VEHICLE_MASTER[sel]["driver"]
     st.session_state.current_owner = VEHICLE_MASTER[sel]["owner"]
+    
+    # 3. FIX: Instantly force-assign those values to the active text_input widget keys
+    key_suffix = st.session_state.form_key
+    st.session_state[f"driver_field_{key_suffix}"] = VEHICLE_MASTER[sel]["driver"]
+    st.session_state[f"owner_field_{key_suffix}"] = VEHICLE_MASTER[sel]["owner"]
 
 # ======================================================
 # Tab Layout Organization
