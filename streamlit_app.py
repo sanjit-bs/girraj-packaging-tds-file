@@ -535,9 +535,20 @@ with tab1:
         )
 
     col3, col4 = st.columns(2)
-    with col3: driver_name = st.text_input("Driver Name", key="current_driver")
-    with col4: owner_name = st.text_input("Owner Name", key="current_owner")
-
+    with col3:
+    # FIX: Use dynamic suffix key and map the value parameter to session_state
+    driver_name = st.text_input(
+        "Driver Name", 
+        value=st.session_state.current_driver,
+        key=f"driver_field_{key_suffix}"
+    )
+    with col4:
+    # FIX: Use dynamic suffix key and map the value parameter to session_state
+    owner_name = st.text_input(
+        "Owner Name", 
+        value=st.session_state.current_owner,
+        key=f"owner_field_{key_suffix}"
+    )
     company = st.selectbox("Company & Location *", options=COMPANY_OPTIONS, key=f"delivery_company_{key_suffix}")
     remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
     delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}")
