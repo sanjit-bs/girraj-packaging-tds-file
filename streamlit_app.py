@@ -393,7 +393,7 @@ WORKSHEET_NAME3 = "Inv_Value"
 
 COLUMNS2 = [
     "Date", "Vehicle No.", "Invoice No.", "Driver", 
-    "Owner", "Company & Location", "Invoice Received", "Remark"
+    "Owner", "Company & Location", "Invoice Received", "Remark", "Loading Charge", "Unloading Charge"
 ]
 
 COLUMNS3 = [
@@ -696,6 +696,83 @@ else:
                 st.session_state.current_invoice = get_next_invoice_number(fresh_df)
                 st.session_state.submit_success = True
                 st.rerun()
+
+# ======================================================
+# UI Section: Post-Submission Loading / Unloading Charges
+# ======================================================
+st.markdown("---")
+st.subheader("💰 Add Loading & Unloading Charges")
+
+# Filter out empty or unsubmitted rows to only show valid submitted invoices
+if delivery_df.empty:
+    st.info("No submitted invoices found to apply charges to.")
+else:
+    # Safely extract unique, non-empty invoice numbers for the dropdown selection
+    submitted_invoices = delivery_df["Invoice No."].dropna().astype(str).str.strip()
+    valid_invoice_options = ["Select Invoice"] + [inv for inv in submitted_invoices.unique() if inv != ""]
+    
+    col_c1, col_c2, col_c3 = st.columns(3)
+    
+    with col_c1:
+        selected_charge_invoice = st.selectbox(
+            "Select Submitted Invoice *", 
+            options=valid_invoice_options,
+            key="charge_invoice_selector"
+        )
+        
+    # Locate the row index if an invoice is selected
+    target_gs_row = None
+    existing_loading = 0.0
+    existing_unloading = 0.0
+    
+    if selected_charge_invoice != "Select Invoice":
+        # Match the selected invoice row in the dataframe
+        match_idx = delivery_df[delivery_df["Invoice No."] == selected_charge_invoice].index
+        if not match_idx.empty:
+            # Save index (gspread uses 1-based indexing, add 2 for header offset)
+            target_gs_row = int(match_idx[0]) + 2
+            
+            # Fetch existing values if they already exist in the sheet to pre-fill them safely
+            row_data = delivery_df.loc[match_idx[0]]
+            if "Loading Charge" in row_data and str(row_data["Loading Charge"]).strip():
+                existing_loading = float(pd.to_numeric(row_data["Loading Charge"], errors="coerce") or 0.0)
+            if "Unloading Charge" in row_data and str(row_data["Unloading Charge"]).strip():
+                existing_unloading = float(pd.to_numeric(row_data["Unloading Charge"], errors="coerce") or 0.0)
+
+    with col_c2:
+        loading_input = st.number_input(
+            "Loading Charge (₹)", 
+            min_value=0.0, 
+            value=existing_loading, 
+            step=10.0, 
+            format="%.2f",
+            key="loading_charge_input"
+        )
+        
+    with col_c3:
+        unloading_input = st.number_input(
+            "Unloading Charge (₹)", 
+            min_value=0.0, 
+            value=existing_unloading, 
+            step=10.0, 
+            format="%.2f",
+            key="unloading_charge_input"
+        )
+
+    # Submission Action Button
+    if st.button("Save Charges to Invoice", type="secondary"):
+        if selected_charge_invoice == "Select Invoice":
+            st.warning("Please choose a valid submitted invoice from the dropdown menu first.")
+        elif target_gs_row is None:
+            st.error("Could not trace the structural coordinates of this invoice in Google Sheets.")
+        else:
+            # Column 9 is Loading Charge, Column 10 is Unloading Charge (directly after column 8: Remark)
+            delivery_sheet.update_cell(target_gs_row, 9, round(loading_input, 2))
+            delivery_sheet.update_cell(target_gs_row, 10, round(unloading_input, 2))
+            
+            st.toast(f"💵 Charges saved successfully for Invoice {selected_charge_invoice}!")
+            st.cache_data.clear()  # Drop cached copy to load updated values immediately
+            st.rerun()
 
 # ======================================================
 # UI Section: Company Wise Bill Summary & Export
