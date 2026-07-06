@@ -735,3 +735,147 @@ else:
             mime="text/csv",
             type="secondary"
         )
+
+############################--------------------------------------------------Stock Record----------------------------------###################################
+WORKSHEET_NAME4 = "Stock_Record"
+
+COLUMNS4 = ["Date", "Company", "Product", "Total Production", "Total Delivery", "Total Stock"]
+
+# Product lists matching your provided inventory categories
+PRODUCTS_KAMAL = [
+    "Select", "RED BOX-NEW", "GREEN BOX", "YELLOW Box", "AMRIT BHANDER Box", 
+    "SMALL CONE Box", "BIG CONE BOX", "PINK box", "Small CHOCOBAR BOX", 
+    "Big CHOCOBAR BOX", "Kulfi BOX (extra hard)", "BLUE BOX", "SWIRL BOX", 
+    "TRIO BOX", "PURPLE BOX", "MULTI Crush BOX", "BIG CONE INNER", 
+    "KULFI INNER", "MANGO/CARAMEL INNER", "SMALL CONE INNER", "PURPLE INNER"
+]
+
+PRODUCTS_AGARWAL = [
+    "Select", "CRIMOSE-AGARWAL Small CONE BOX", "CRIMOSE-AGARWAL Small CONE INNER", 
+    "CRIMOSE-AGARWAL Small CHOCOBAR BOX", "CRIMOSE-AGARWAL CARAMEL BOX", 
+    "CRIMOSE-AGARWAL CARAMEL INNER BOX", "CRIMOSE-AGARWAL BIG CHOCOBAR BOX", 
+    "CRIMOSE-AGARWAL Nutt Roll BOX", "CIMOSE-AGARWAL 80 ML CUP BOX"
+]
+
+@st.cache_resource(ttl=3600)  
+def connect_stock_sheet():
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME4)
+
+stock_sheet = connect_stock_sheet()
+
+@st.cache_data(ttl=10)
+def load_stock_data():
+    records = stock_sheet.get_all_records()
+    if not records:
+        return pd.DataFrame(columns=COLUMNS4)
+    df = pd.DataFrame(records)
+    df.columns = df.columns.str.strip()
+    for col in COLUMNS4:
+        if col not in df.columns: 
+            df[col] = 0 if "Total" in col else ""
+    return df[COLUMNS4]
+
+# Load current stock history ledger dataframe
+stock_df = load_stock_data()
+
+st.subheader("📦 Company-Wise Product Stock Registry")
+key_suffix_stock = st.session_state.form_key
+
+col_s1, col_s2, col_s3 = st.columns(3)
+
+with col_s1:
+    # 1. Company Selection
+    stock_company = st.selectbox(
+        "Company *", 
+        options=["Select", "Kamal’s Ice Cream (Dhulagori)", "Agarwal Food Product (Sankrail)"],
+        key=f"stock_comp_{key_suffix_stock}"
+    )
+
+with col_s2:
+    # 2. Dynamic Dependent Product Dropdown Allocation
+    if "Kamal" in stock_company:
+        product_options = PRODUCTS_KAMAL
+    elif "Agarwal" in stock_company:
+        product_options = PRODUCTS_AGARWAL
+    else:
+        product_options = ["Select"]
+        
+    stock_product = st.selectbox(
+        "Product Item *", 
+        options=product_options, 
+        key=f"stock_prod_{key_suffix_stock}"
+    )
+
+with col_s3:
+    stock_date = st.date_input("Log Date", value=date.today(), key=f"stock_date_{key_suffix_stock}")
+
+col_qty1, col_qty2 = st.columns(2)
+with col_qty1:
+    prod_qty = st.number_input("Total Production Entry (Boxes/Inners)", min_value=0, value=0, step=1, key=f"prod_qty_{key_suffix_stock}")
+with col_qty2:
+    deliv_qty = st.number_input("Total Delivery Entry (Boxes/Inners)", min_value=0, value=0, step=1, key=f"deliv_qty_{key_suffix_stock}")
+
+# 3. Dynamic Balance Calculation Logic
+current_balance = 0
+if not stock_df.empty and stock_product != "Select":
+    # Filter historical entries for this specific company and product to find running total balance
+    matching_history = stock_df[
+        (stock_df["Company"] == stock_company) & 
+        (stock_df["Product"] == stock_product)
+    ]
+    if not matching_history.empty:
+        # Fetch the very last calculated stock value from rows
+        current_balance = pd.to_numeric(matching_history.iloc[-1]["Total Stock"], errors="coerce")
+        if pd.isna(current_balance):
+            current_balance = 0
+
+# Final stock balancing calculation formula logic
+calculated_total_stock = current_balance + prod_qty - deliv_qty
+
+# Metrics Display Layout
+st.markdown("### 📊 Live Inventory Balance Adjustments")
+sm_col1, sm_col2, sm_col3 = st.columns(3)
+sm_col1.metric("Previous Closing Balance", f"{current_balance} units")
+sm_col2.metric("Net Change", f"+{prod_qty - deliv_qty} units", delta=int(prod_qty - deliv_qty))
+sm_col3.metric("New Computed Total Stock", f"{calculated_total_stock} units")
+
+if st.button("Submit Stock Entry Log", type="primary"):
+    if stock_company == "Select":
+        st.warning("Please choose a valid Company.")
+    elif stock_product == "Select":
+        st.warning("Please select a target Product Item.")
+    elif prod_qty == 0 and deliv_qty == 0:
+        st.warning("Production and Delivery cannot both be zero.")
+    else:
+        # Appends rows securely to the Worksheet 4 Google Spreadsheet ledger
+        stock_sheet.append_row([
+            stock_date.strftime("%d/%m/%Y"),
+            stock_company.strip(),
+            stock_product.strip(),
+            int(prod_qty),
+            int(deliv_qty),
+            int(calculated_total_stock)
+        ])
+        
+        st.cache_data.clear()
+        st.session_state.submit_success = True
+        st.session_state.form_key += 1
+        st.rerun()
+
+# ======================================================
+# Real-Time Inventory Stock Viewer Section
+# ======================================================
+st.markdown("---")
+st.subheader("📋 Current Ledger Stock Balances")
+
+if stock_df.empty:
+    st.info("No logged production inventory details available yet.")
+else:
+    # Quick-view filter options
+    st.dataframe(
+        stock_df,
+        use_container_width=True,
+        hide_index=True
+    )
