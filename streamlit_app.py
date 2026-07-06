@@ -986,3 +986,93 @@ else:
         use_container_width=True,
         hide_index=True
     )
+
+WORKSHEET_NAME5 = "Unloading"  # <-- Your new sheet target configurations
+COLUMNS5 = ["Date", "Amount", "Remark"]
+
+# Add this connector block with your other sheet connections
+@st.cache_resource(ttl=3600)  
+def connect_unloading_sheet():
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME5)
+
+################------------Unloading--------------#####################
+
+unloading_sheet = connect_unloading_sheet()
+
+@st.cache_data(ttl=10)  # Shorter TTL cache allows manual deletions to sync quickly
+def load_unloading_data():
+    records = unloading_sheet.get_all_records()
+    if not records:
+        return pd.DataFrame(columns=COLUMNS5)
+    df = pd.DataFrame(records)
+    df.columns = df.columns.str.strip()
+    for col in COLUMNS5:
+        if col not in df.columns: 
+            df[col] = 0.0 if col == "Amount" else ""
+    return df[COLUMNS5]
+
+# Load active tracker data rows from the new sheet
+unloading_df = load_unloading_data()
+
+st.markdown("---")
+st.subheader("🚛 Miscellaneous Unloading Expense Ledger")
+key_suffix_unload = st.session_state.form_key
+
+col_u1, col_u2, col_u3 = st.columns([1.5, 2, 3])
+
+with col_u1:
+    unload_date = st.date_input("Expense Date", value=date.today(), key=f"unload_date_{key_suffix_unload}")
+
+with col_u2:
+    unload_amount = st.number_input(
+        "Amount (₹) *", 
+        min_value=0.0, 
+        value=0.0, 
+        step=50.0, 
+        format="%.2f", 
+        key=f"unload_amt_{key_suffix_unload}"
+    )
+
+with col_u3:
+    unload_remark = st.text_input("Remark / Details", key=f"unload_rem_{key_suffix_unload}")
+
+# Form Submission Action Logic
+if st.button("Submit Unloading Entry", type="primary", key="btn_submit_unloading"):
+    if unload_amount <= 0.0:
+        st.warning("Please enter an amount greater than zero.")
+    else:
+        # Appends items strictly to the rows of Worksheet 5: Unloading
+        unloading_sheet.append_row([
+            unload_date.strftime("%d/%m/%Y"),
+            round(unload_amount, 2),
+            unload_remark.strip()
+        ])
+        
+        st.cache_data.clear()  # Clear memory cache so data refreshes instantly
+        st.session_state.submit_success = True
+        st.session_state.form_key += 1
+        st.rerun()
+
+# ======================================================
+# Real-Time Unloading Sheet Data Table Record Viewer
+# ======================================================
+st.markdown("### 📋 Logged Unloading Entries")
+
+if unloading_df.empty:
+    st.info("No recorded unloading expense records found.")
+else:
+    # 1. Real-time metric summary tally calculation box
+    total_unloading_spent = pd.to_numeric(unloading_df["Amount"], errors="coerce").sum()
+    st.metric("Total Unloading Expenses Applied", f"₹ {total_unloading_spent:,.2f}")
+    
+    # 2. Interactive Data View window 
+    st.dataframe(
+        unloading_df,
+        column_config={
+            "Amount": st.column_config.NumberColumn(format="₹ %.2f")
+        },
+        use_container_width=True,
+        hide_index=True
+    )
