@@ -538,14 +538,14 @@ with tab1:
     with col3:
     # FIX: Use dynamic suffix key and map the value parameter to session_state
     driver_name = st.text_input(
-        "Driver Name", 
+        "Driver", 
         value=st.session_state.current_driver,
         key=f"driver_field_{key_suffix}"
     )
     with col4:
     # FIX: Use dynamic suffix key and map the value parameter to session_state
     owner_name = st.text_input(
-        "Owner Name", 
+        "Owner", 
         value=st.session_state.current_owner,
         key=f"owner_field_{key_suffix}"
     )
