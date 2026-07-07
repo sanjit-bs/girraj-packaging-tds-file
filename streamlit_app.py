@@ -937,7 +937,7 @@ sm_col1.metric("Updated Total Production", f"{updated_total_prod} units", delta=
 sm_col2.metric("Updated Total Delivery", f"{updated_total_deliv} units", delta=f"+{new_deliv_input}" if new_deliv_input else None)
 sm_col3.metric("Live Total Stock Balance", f"{updated_total_stock} units")
 
-if st.button("Update Stock Balance", type="primary"):
+if st.button("Update Stock", type="primary"):
     if stock_company == "Select":
         st.warning("Please choose a valid Company.")
     elif stock_product == "Select":
