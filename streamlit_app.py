@@ -4,6 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from io import BytesIO
 from datetime import date
+import math
 import re
 
 st.set_page_config(page_title="GIRRAJ PACKAGING", layout="wide")
@@ -1081,6 +1082,24 @@ else:
 # ------------------------------------------------------
 # Paper Rill Stock Ledger Configuration & Connection
 # ------------------------------------------------------
+# ------------------------------------------------------
+# Helper: Native Python JSON Sanitizer for gspread
+# ------------------------------------------------------
+def sanitize_value(val):
+    """Converts Pandas/NumPy types, NaNs, and dates into standard Python primitives."""
+    if val is None or (isinstance(val, float) and math.isnan(val)):
+        return ""
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%d/%m/%Y")
+    if isinstance(val, (np.integer, int)):
+        return int(val)
+    if isinstance(val, (np.floating, float)):
+        return float(val)
+    return str(val).strip()
+
+# ------------------------------------------------------
+# Paper Rill Stock Ledger Configuration & Connection
+# ------------------------------------------------------
 WORKSHEET_NAME6 = "rill_stock"
 COLUMNS6 = ["Date", "Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
 
@@ -1169,7 +1188,6 @@ if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
         elif qty_change == 0 and new_remark == curr_remark:
             st.warning("Please enter a quantity change or update the remark.")
         else:
-            # Row payload matching columns: Date, Size, GSM, BF, Quantity, Weight, Remark
             row_payload = [
                 rill_date.strftime("%d/%m/%Y"),
                 curr_size,
@@ -1180,8 +1198,7 @@ if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
                 new_remark.strip()
             ]
             
-            # Sanitize values to prevent JSON serialization errors with Google Sheets
-            clean_payload = [sanitize_value(x) if 'sanitize_value' in globals() else x for x in row_payload]
+            clean_payload = [sanitize_value(x) for x in row_payload]
             cell_range = f"A{gs_row_num}:G{gs_row_num}"
             
             rill_sheet.update(range_name=cell_range, values=[clean_payload])
@@ -1225,7 +1242,6 @@ elif selected_item == "➕ Add New Specification":
             duplicate_found = False
             
             if not rill_df.empty:
-                # Normalize strings for comparison to avoid capitalization/spacing mismatch
                 match_condition = (
                     (rill_df["Size"].astype(str).str.strip().str.lower() == clean_size.lower()) &
                     (rill_df["GSM"].astype(str).str.strip().str.lower() == clean_gsm.lower()) &
@@ -1236,17 +1252,14 @@ elif selected_item == "➕ Add New Specification":
                 if not matching_rows.empty:
                     duplicate_found = True
                     matched_idx = matching_rows.index[0]
-                    gs_row_num = int(matched_idx) + 2  # 1-based index + header offset
+                    gs_row_num = int(matched_idx) + 2
 
-                    # Fetch current stock and add new quantity as Purchased (+)
                     curr_qty = int(pd.to_numeric(matching_rows.iloc[0]["Quantity"], errors="coerce") or 0)
                     updated_qty = curr_qty + int(new_initial_qty)
                     
-                    # Retain current weight if 0.0 was entered; otherwise update with new weight
                     curr_weight = float(pd.to_numeric(matching_rows.iloc[0]["Weight"], errors="coerce") or 0.0)
                     final_weight = round(float(new_weight), 2) if new_weight > 0 else curr_weight
 
-                    # Merge remarks if a new one was provided
                     curr_remark = str(matching_rows.iloc[0]["Remark"]).strip()
                     final_remark = new_remark_text.strip() if new_remark_text.strip() else curr_remark
 
@@ -1259,14 +1272,13 @@ elif selected_item == "➕ Add New Specification":
                         final_weight,
                         final_remark
                     ]
-                    clean_payload = [sanitize_value(x) if 'sanitize_value' in globals() else x for x in row_payload]
+                    clean_payload = [sanitize_value(x) for x in row_payload]
                     
                     cell_range = f"A{gs_row_num}:G{gs_row_num}"
                     rill_sheet.update(range_name=cell_range, values=[clean_payload])
 
                     st.toast(f"🔄 Existing item detected! Added {new_initial_qty} rolls as Purchased. New balance: {updated_qty} rolls.")
 
-            # Append as a brand-new row if no duplicate exists
             if not duplicate_found:
                 row_payload = [
                     new_date.strftime("%d/%m/%Y"),
@@ -1277,7 +1289,7 @@ elif selected_item == "➕ Add New Specification":
                     round(float(new_weight), 2),
                     new_remark_text.strip()
                 ]
-                clean_payload = [sanitize_value(x) if 'sanitize_value' in globals() else x for x in row_payload]
+                clean_payload = [sanitize_value(x) for x in row_payload]
                 
                 rill_sheet.append_row(clean_payload)
                 st.toast("✨ New rill specification added to stock sheet!")
