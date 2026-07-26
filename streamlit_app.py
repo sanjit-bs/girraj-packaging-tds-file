@@ -3,7 +3,8 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 from io import BytesIO
-from datetime import date, datetime
+from datetime import date
+import datetime
 import math
 import re
 
