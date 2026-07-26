@@ -1164,7 +1164,7 @@ if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
             row_payload = [curr_size, curr_gsm, curr_bf, final_qty, curr_weight, new_remark.strip()]
             cell_range = f"A{gs_row_num}:F{gs_row_num}"
             
-            rill_sheet.update(cell_range, [row_payload])
+            rill_sheet.update(range_name=cell_range, values=[row_payload])
             st.toast(f"✅ Rill stock updated! New balance: {final_qty} rolls.")
             
             st.cache_data.clear()
@@ -1232,7 +1232,7 @@ elif selected_item == "➕ Add New Specification":
                     # Update the existing row instead of appending
                     row_payload = [clean_size, clean_gsm, clean_bf, updated_qty, final_weight, final_remark]
                     cell_range = f"A{gs_row_num}:F{gs_row_num}"
-                    rill_sheet.update(cell_range, [row_payload])
+                    rill_sheet.update(range_name=cell_range, values=[row_payload])
 
                     st.toast(f"🔄 Existing item detected! Added {new_initial_qty} rolls as Purchased. New balance: {updated_qty} rolls.")
 
