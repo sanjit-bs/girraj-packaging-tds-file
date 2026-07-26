@@ -1076,3 +1076,155 @@ else:
         use_container_width=True,
         hide_index=True
     )
+
+#######################################Paper Rill Stock######################################
+WORKSHEET_NAME6 = "rill_stock"
+COLUMNS6 = ["Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
+
+# Google Sheet Connector for Rill Stock
+@st.cache_resource(ttl=3600)  
+def connect_rill_sheet():
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME6)
+
+rill_sheet = connect_rill_sheet()
+
+@st.cache_data(ttl=10)
+def load_rill_data():
+    records = rill_sheet.get_all_records()
+    if not records:
+        return pd.DataFrame(columns=COLUMNS6)
+    df = pd.DataFrame(records)
+    df.columns = df.columns.str.strip()
+    for col in COLUMNS6:
+        if col not in df.columns: 
+            df[col] = 0 if col in ["Quantity", "Weight"] else ""
+    return df[COLUMNS6]
+
+# Load current Rill Stock dataframe
+rill_df = load_rill_data()
+
+st.markdown("---")
+st.subheader("📜 Paper Rill Stock Ledger")
+key_suffix_rill = st.session_state.form_key
+
+# 1. Build Dropdown Options from Existing Entries
+existing_items = []
+if not rill_df.empty:
+    for idx, row in rill_df.iterrows():
+        label = f"{row['Size']} | GSM: {row['GSM']} | BF: {row['BF']}"
+        existing_items.append(label)
+
+item_options = ["Select an Item..."] + existing_items + ["➕ Add New Specification"]
+
+selected_item = st.selectbox(
+    "Select Rill Specification *",
+    options=item_options,
+    key=f"rill_item_sel_{key_suffix_rill}"
+)
+
+# --- Mode A: Modifying Existing Rill Item ---
+if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
+    # Locate exact row index in dataframe
+    selected_idx = item_options.index(selected_item) - 1
+    matched_row = rill_df.iloc[selected_idx]
+    gs_row_num = selected_idx + 2  # Offset for 1-based index + header row
+
+    curr_size = str(matched_row["Size"])
+    curr_gsm = str(matched_row["GSM"])
+    curr_bf = str(matched_row["BF"])
+    curr_qty = int(pd.to_numeric(matched_row["Quantity"], errors="coerce") or 0)
+    curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
+    curr_remark = str(matched_row["Remark"])
+
+    st.info(f"📌 **Current Stock:** {curr_qty} Rolls | **Weight:** {curr_weight} kg | **Remark:** {curr_remark if curr_remark else 'N/A'}")
+
+    col_m1, col_m2, col_m3 = st.columns([1.5, 1.5, 2])
+    with col_m1:
+        action_type = st.radio("Action Type *", options=["Purchased (+)", "Used (-)"], horizontal=True, key=f"rill_act_{key_suffix_rill}")
+    with col_m2:
+        qty_change = st.number_input("Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"rill_qty_mod_{key_suffix_rill}")
+    with col_m3:
+        new_remark = st.text_input("Update Remark", value=curr_remark, key=f"rill_rem_mod_{key_suffix_rill}")
+
+    # Calculate updated balance
+    if action_type == "Purchased (+)":
+        final_qty = curr_qty + qty_change
+    else:
+        final_qty = max(0, curr_qty - qty_change)
+
+    st.metric("New Computed Roll Quantity", f"{final_qty} Rolls", delta=f"{'+' if action_type == 'Purchased (+)' else '-'}{qty_change}")
+
+    if st.button("Update Stock Quantity", type="primary", key="btn_update_rill"):
+        if qty_change == 0 and new_remark == curr_remark:
+            st.warning("Please enter a quantity change or update the remark.")
+        else:
+            # Payload matching columns: Size, GSM, BF, Quantity, Weight, Remark
+            row_payload = [curr_size, curr_gsm, curr_bf, final_qty, curr_weight, new_remark.strip()]
+            cell_range = f"A{gs_row_num}:F{gs_row_num}"
+            
+            rill_sheet.update(cell_range, [row_payload])
+            st.toast(f"✅ Rill stock updated! New balance: {final_qty} rolls.")
+            
+            st.cache_data.clear()
+            st.session_state.submit_success = True
+            st.session_state.form_key += 1
+            st.rerun()
+
+# --- Mode B: Adding a Brand New Specification ---
+elif selected_item == "➕ Add New Specification":
+    st.markdown("##### 📝 Create New Paper Rill Entry")
+    
+    col_n1, col_n2, col_n3 = st.columns(3)
+    with col_n1:
+        new_size = st.text_input("Size *", key=f"new_rill_size_{key_suffix_rill}")
+    with col_n2:
+        new_gsm = st.text_input("GSM *", key=f"new_rill_gsm_{key_suffix_rill}")
+    with col_n3:
+        new_bf = st.text_input("BF *", key=f"new_rill_bf_{key_suffix_rill}")
+
+    col_n4, col_n5, col_n6 = st.columns(3)
+    with col_n4:
+        new_initial_qty = st.number_input("Initial Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"new_rill_qty_{key_suffix_rill}")
+    with col_n5:
+        new_weight = st.number_input("Weight (kg)", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"new_rill_wt_{key_suffix_rill}")
+    with col_n6:
+        new_remark_text = st.text_input("Remark", key=f"new_rill_rem_{key_suffix_rill}")
+
+    if st.button("Save New Specification", type="primary", key="btn_add_new_rill"):
+        if new_size.strip() == "" or new_gsm.strip() == "" or new_bf.strip() == "":
+            st.warning("Please fill in Size, GSM, and BF.")
+        else:
+            rill_sheet.append_row([
+                new_size.strip(),
+                new_gsm.strip(),
+                new_bf.strip(),
+                int(new_initial_qty),
+                round(float(new_weight), 2),
+                new_remark_text.strip()
+            ])
+            st.toast("✨ New rill specification added to stock sheet!")
+            
+            st.cache_data.clear()
+            st.session_state.submit_success = True
+            st.session_state.form_key += 1
+            st.rerun()
+
+# ======================================================
+# Real-Time Master Rill Stock Table
+# ======================================================
+st.markdown("### 📋 Current Paper Rill Inventory")
+
+if rill_df.empty:
+    st.info("No paper rill stock records available.")
+else:
+    st.dataframe(
+        rill_df,
+        column_config={
+            "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
+            "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f")
+        },
+        use_container_width=True,
+        hide_index=True
+    )
