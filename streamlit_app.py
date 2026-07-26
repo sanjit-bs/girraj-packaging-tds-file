@@ -1172,7 +1172,7 @@ if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
             st.session_state.form_key += 1
             st.rerun()
 
-# --- Mode B: Adding a Brand New Specification ---
+# --- Mode B: Adding a Brand New Specification (With Auto-Duplicate Merge) ---
 elif selected_item == "➕ Add New Specification":
     st.markdown("##### 📝 Create New Paper Rill Entry")
     
@@ -1186,26 +1186,68 @@ elif selected_item == "➕ Add New Specification":
 
     col_n4, col_n5, col_n6 = st.columns(3)
     with col_n4:
-        new_initial_qty = st.number_input("Initial Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"new_rill_qty_{key_suffix_rill}")
+        new_initial_qty = st.number_input("Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"new_rill_qty_{key_suffix_rill}")
     with col_n5:
         new_weight = st.number_input("Weight (kg)", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"new_rill_wt_{key_suffix_rill}")
     with col_n6:
         new_remark_text = st.text_input("Remark", key=f"new_rill_rem_{key_suffix_rill}")
 
-    if st.button("Save New Specification", type="primary", key="btn_add_new_rill"):
-        if new_size.strip() == "" or new_gsm.strip() == "" or new_bf.strip() == "":
+    if st.button("Save Entry", type="primary", key="btn_add_new_rill"):
+        clean_size = new_size.strip()
+        clean_gsm = new_gsm.strip()
+        clean_bf = new_bf.strip()
+
+        if clean_size == "" or clean_gsm == "" or clean_bf == "":
             st.warning("Please fill in Size, GSM, and BF.")
         else:
-            rill_sheet.append_row([
-                new_size.strip(),
-                new_gsm.strip(),
-                new_bf.strip(),
-                int(new_initial_qty),
-                round(float(new_weight), 2),
-                new_remark_text.strip()
-            ])
-            st.toast("✨ New rill specification added to stock sheet!")
+            # 🔍 Duplicate Check Logic
+            duplicate_found = False
             
+            if not rill_df.empty:
+                # Normalize strings for comparison to avoid capitalization/spacing mismatch
+                match_condition = (
+                    (rill_df["Size"].astype(str).str.strip().str.lower() == clean_size.lower()) &
+                    (rill_df["GSM"].astype(str).str.strip().str.lower() == clean_gsm.lower()) &
+                    (rill_df["BF"].astype(str).str.strip().str.lower() == clean_bf.lower())
+                )
+                matching_rows = rill_df[match_condition]
+
+                if not matching_rows.empty:
+                    duplicate_found = True
+                    matched_idx = matching_rows.index[0]
+                    gs_row_num = int(matched_idx) + 2  # 1-based index + header offset
+
+                    # Fetch current stock and add new quantity as Purchased (+)
+                    curr_qty = int(pd.to_numeric(matching_rows.iloc[0]["Quantity"], errors="coerce") or 0)
+                    updated_qty = curr_qty + int(new_initial_qty)
+                    
+                    # Keep existing weight if 0.0 was entered, or update with new weight if provided
+                    curr_weight = float(pd.to_numeric(matching_rows.iloc[0]["Weight"], errors="coerce") or 0.0)
+                    final_weight = round(float(new_weight), 2) if new_weight > 0 else curr_weight
+
+                    # Merge remarks if a new one was provided
+                    curr_remark = str(matching_rows.iloc[0]["Remark"]).strip()
+                    final_remark = new_remark_text.strip() if new_remark_text.strip() else curr_remark
+
+                    # Update the existing row instead of appending
+                    row_payload = [clean_size, clean_gsm, clean_bf, updated_qty, final_weight, final_remark]
+                    cell_range = f"A{gs_row_num}:F{gs_row_num}"
+                    rill_sheet.update(cell_range, [row_payload])
+
+                    st.toast(f"🔄 Existing item detected! Added {new_initial_qty} rolls as Purchased. New balance: {updated_qty} rolls.")
+
+            # 📝 If no duplicate found, append as a brand-new row
+            if not duplicate_found:
+                rill_sheet.append_row([
+                    clean_size,
+                    clean_gsm,
+                    clean_bf,
+                    int(new_initial_qty),
+                    round(float(new_weight), 2),
+                    new_remark_text.strip()
+                ])
+                st.toast("✨ New rill specification added to stock sheet!")
+
             st.cache_data.clear()
             st.session_state.submit_success = True
             st.session_state.form_key += 1
