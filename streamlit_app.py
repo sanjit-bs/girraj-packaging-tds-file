@@ -1089,14 +1089,14 @@ def sanitize_value(val):
     """Converts Pandas/NumPy types, NaNs, and dates into standard Python primitives."""
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return ""
-    if isinstance(val, (datetime, date)):
+    # Safe check using module reference directly
+    if isinstance(val, (datetime.date, datetime.datetime)):
         return val.strftime("%d/%m/%Y")
     if isinstance(val, (np.integer, int)):
         return int(val)
     if isinstance(val, (np.floating, float)):
         return float(val)
     return str(val).strip()
-
 # ------------------------------------------------------
 # Paper Rill Stock Ledger Configuration & Connection
 # ------------------------------------------------------
