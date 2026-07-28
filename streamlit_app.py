@@ -1082,28 +1082,23 @@ else:
 
 #######################################Paper Rill Stock######################################
 # ------------------------------------------------------
-# Paper Rill Stock Ledger Configuration & Connection
-# ------------------------------------------------------
-# ------------------------------------------------------
 # Helper: Native Python JSON Sanitizer for gspread
 # ------------------------------------------------------
 def sanitize_value(val):
-    """Converts Pandas/NumPy types, NaNs, and dates into standard Python primitives."""
+    """Converts Pandas/NumPy types, NaNs into standard Python primitives."""
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return ""
-    # Safe check using module reference directly
-    if isinstance(val, (datetime.date, datetime.datetime)):
-        return val.strftime("%d/%m/%Y")
     if isinstance(val, (np.integer, int)):
         return int(val)
     if isinstance(val, (np.floating, float)):
         return float(val)
     return str(val).strip()
+
 # ------------------------------------------------------
 # Paper Rill Stock Ledger Configuration & Connection
 # ------------------------------------------------------
 WORKSHEET_NAME6 = "rill_stock"
-COLUMNS6 = ["Date", "Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
+COLUMNS6 = ["Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
 
 @st.cache_resource(ttl=3600)  
 def connect_rill_sheet():
@@ -1132,30 +1127,62 @@ st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger")
 key_suffix_rill = st.session_state.form_key
 
-# 1. Build Dropdown Options from Existing Entries
-existing_items = []
-if not rill_df.empty:
-    for idx, row in rill_df.iterrows():
-        label = f"{row['Size']} | GSM: {row['GSM']} | BF: {row['BF']}"
-        existing_items.append(label)
+# --- 1. Separate Dropdowns for Specification Selection ---
+st.markdown("##### 🔍 Select Specification")
 
-item_options = ["Select an Item..."] + existing_items + ["➕ Add New Specification"]
+# Get unique values for cascading/independent selection
+unique_sizes = sorted(list(set(rill_df["Size"].astype(str).str.strip().unique()))) if not rill_df.empty else []
+unique_gsms = sorted(list(set(rill_df["GSM"].astype(str).str.strip().unique()))) if not rill_df.empty else []
+unique_bfs = sorted(list(set(rill_df["BF"].astype(str).str.strip().unique()))) if not rill_df.empty else []
 
-selected_item = st.selectbox(
-    "Select Rill Specification *",
-    options=item_options,
-    key=f"rill_item_sel_{key_suffix_rill}"
+col_s1, col_s2, col_s3 = st.columns(3)
+
+with col_s1:
+    selected_size = st.selectbox(
+        "Size *",
+        options=["Select Size..."] + unique_sizes + ["➕ New Size"],
+        key=f"rill_size_sel_{key_suffix_rill}"
+    )
+
+with col_s2:
+    selected_gsm = st.selectbox(
+        "GSM *",
+        options=["Select GSM..."] + unique_gsms + ["➕ New GSM"],
+        key=f"rill_gsm_sel_{key_suffix_rill}"
+    )
+
+with col_s3:
+    selected_bf = st.selectbox(
+        "BF *",
+        options=["Select BF..."] + unique_bfs + ["➕ New BF"],
+        key=f"rill_bf_sel_{key_suffix_rill}"
+    )
+
+# Check if user is adding a completely new item or selecting an existing one
+is_new_entry = (
+    "➕ New Size" in selected_size or 
+    "➕ New GSM" in selected_gsm or 
+    "➕ New BF" in selected_bf or
+    selected_size == "Select Size..." or
+    selected_gsm == "Select GSM..." or
+    selected_bf == "Select BF..."
 )
 
-# --- Mode A: Modifying Existing Rill Item ---
-if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
-    selected_idx = item_options.index(selected_item) - 1
-    matched_row = rill_df.iloc[selected_idx]
-    gs_row_num = selected_idx + 2  # Offset for 1-based index + header row
+# Search for matching item in dataframe
+matched_rows = pd.DataFrame()
+if not is_new_entry and not rill_df.empty:
+    matched_rows = rill_df[
+        (rill_df["Size"].astype(str).str.strip().str.lower() == selected_size.lower()) &
+        (rill_df["GSM"].astype(str).str.strip().str.lower() == selected_gsm.lower()) &
+        (rill_df["BF"].astype(str).str.strip().str.lower() == selected_bf.lower())
+    ]
 
-    curr_size = str(matched_row["Size"])
-    curr_gsm = str(matched_row["GSM"])
-    curr_bf = str(matched_row["BF"])
+# --- Mode A: Modifying Existing Rill Item ---
+if not matched_rows.empty:
+    matched_idx = matched_rows.index[0]
+    matched_row = matched_rows.iloc[0]
+    gs_row_num = matched_idx + 2  # Header offset
+
     curr_qty = int(pd.to_numeric(matched_row["Quantity"], errors="coerce") or 0)
     curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
     curr_remark = str(matched_row["Remark"])
@@ -1164,137 +1191,104 @@ if selected_item not in ["Select an Item...", "➕ Add New Specification"]:
 
     col_m1, col_m2, col_m3, col_m4 = st.columns([1.5, 1.5, 1.5, 2.5])
     with col_m1:
-        rill_date = st.date_input("Update Date", value=date.today(), key=f"rill_date_mod_{key_suffix_rill}")
-    with col_m2:
         action_type = st.radio("Action Type *", options=["Purchased (+)", "Used (-)"], horizontal=True, key=f"rill_act_{key_suffix_rill}")
+    with col_m2:
+        qty_change = st.number_input("Quantity Change (Rolls) *", min_value=0, value=0, step=1, key=f"rill_qty_mod_{key_suffix_rill}")
     with col_m3:
-        qty_change = st.number_input("Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"rill_qty_mod_{key_suffix_rill}")
+        weight_change = st.number_input("Weight Change (kg) *", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"rill_wt_mod_{key_suffix_rill}")
     with col_m4:
         new_remark = st.text_input("Update Remark", value=curr_remark, key=f"rill_rem_mod_{key_suffix_rill}")
 
-    # Calculate updated quantity balance
+    # Calculate updated quantity and weight balance
     if action_type == "Purchased (+)":
         final_qty = curr_qty + qty_change
+        final_weight = curr_weight + weight_change
     else:
         final_qty = curr_qty - qty_change
+        final_weight = curr_weight - weight_change
 
-    st.metric(
-        label="New Computed Roll Quantity", 
-        value=f"{final_qty} Rolls", 
-        delta=f"{'+' if action_type == 'Purchased (+)' else '-'}{qty_change}"
-    )
+    col_met1, col_met2 = st.columns(2)
+    with col_met1:
+        st.metric(
+            label="New Computed Roll Quantity", 
+            value=f"{final_qty} Rolls", 
+            delta=f"{'+' if action_type == 'Purchased (+)' else '-'}{qty_change}"
+        )
+    with col_met2:
+        st.metric(
+            label="New Computed Weight", 
+            value=f"{final_weight:.2f} kg", 
+            delta=f"{'+' if action_type == 'Purchased (+)' else '-'}{weight_change:.2f} kg"
+        )
 
-    if st.button("Update Stock Quantity", type="primary", key="btn_update_rill"):
+    if st.button("Update Stock", type="primary", key="btn_update_rill"):
         if action_type == "Used (-)" and qty_change > curr_qty:
             st.warning(f"Cannot subtract {qty_change} rolls! Available stock is only {curr_qty} rolls.")
-        elif qty_change == 0 and new_remark == curr_remark:
-            st.warning("Please enter a quantity change or update the remark.")
+        elif action_type == "Used (-)" and weight_change > curr_weight:
+            st.warning(f"Cannot subtract {weight_change:.2f} kg! Available stock weight is only {curr_weight:.2f} kg.")
+        elif qty_change == 0 and weight_change == 0 and new_remark == curr_remark:
+            st.warning("Please enter a quantity/weight change or update the remark.")
         else:
             row_payload = [
-                rill_date.strftime("%d/%m/%Y"),
-                curr_size,
-                curr_gsm,
-                curr_bf,
+                selected_size,
+                selected_gsm,
+                selected_bf,
                 int(final_qty),
-                round(curr_weight, 2),
+                round(final_weight, 2),
                 new_remark.strip()
             ]
             
             clean_payload = [sanitize_value(x) for x in row_payload]
-            cell_range = f"A{gs_row_num}:G{gs_row_num}"
+            cell_range = f"A{gs_row_num}:F{gs_row_num}"
             
             rill_sheet.update(range_name=cell_range, values=[clean_payload])
-            st.toast(f"✅ Rill stock updated! New balance: {final_qty} rolls.")
+            st.toast(f"✅ Rill stock updated! New balance: {final_qty} rolls | {final_weight:.2f} kg.")
             
             st.cache_data.clear()
             st.session_state.submit_success = True
             st.session_state.form_key += 1
             st.rerun()
 
-# --- Mode B: Adding a Brand New Specification (With Auto-Duplicate Merge) ---
-elif selected_item == "➕ Add New Specification":
-    st.markdown("##### 📝 Create New Paper Rill Entry")
-    
-    col_n1, col_n2, col_n3, col_n4 = st.columns(4)
-    with col_n1:
-        new_date = st.date_input("Entry Date", value=date.today(), key=f"new_rill_date_{key_suffix_rill}")
-    with col_n2:
-        new_size = st.text_input("Size *", key=f"new_rill_size_{key_suffix_rill}")
-    with col_n3:
-        new_gsm = st.text_input("GSM *", key=f"new_rill_gsm_{key_suffix_rill}")
-    with col_n4:
-        new_bf = st.text_input("BF *", key=f"new_rill_bf_{key_suffix_rill}")
+# --- Mode B: Adding a New Specification ---
+else:
+    st.markdown("##### 📝 Enter Specification Details")
 
-    col_n5, col_n6, col_n7 = st.columns(3)
-    with col_n5:
-        new_initial_qty = st.number_input("Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"new_rill_qty_{key_suffix_rill}")
-    with col_n6:
-        new_weight = st.number_input("Weight (kg)", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"new_rill_wt_{key_suffix_rill}")
-    with col_n7:
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        final_size = st.text_input("Size *", value="" if selected_size == "Select Size..." else (selected_size if selected_size != "➕ New Size" else ""), key=f"input_size_{key_suffix_rill}")
+    with col_f2:
+        final_gsm = st.text_input("GSM *", value="" if selected_gsm == "Select GSM..." else (selected_gsm if selected_gsm != "➕ New GSM" else ""), key=f"input_gsm_{key_suffix_rill}")
+    with col_f3:
+        final_bf = st.text_input("BF *", value="" if selected_bf == "Select BF..." else (selected_bf if selected_bf != "➕ New BF" else ""), key=f"input_bf_{key_suffix_rill}")
+
+    col_n1, col_n2, col_n3 = st.columns(3)
+    with col_n1:
+        new_initial_qty = st.number_input("Initial Quantity (Rolls) *", min_value=0, value=0, step=1, key=f"new_rill_qty_{key_suffix_rill}")
+    with col_n2:
+        new_weight = st.number_input("Initial Weight (kg) *", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"new_rill_wt_{key_suffix_rill}")
+    with col_n3:
         new_remark_text = st.text_input("Remark", key=f"new_rill_rem_{key_suffix_rill}")
 
-    if st.button("Save Entry", type="primary", key="btn_add_new_rill"):
-        clean_size = new_size.strip()
-        clean_gsm = new_gsm.strip()
-        clean_bf = new_bf.strip()
+    if st.button("Save New Stock Entry", type="primary", key="btn_add_new_rill"):
+        clean_size = final_size.strip()
+        clean_gsm = final_gsm.strip()
+        clean_bf = final_bf.strip()
 
         if clean_size == "" or clean_gsm == "" or clean_bf == "":
             st.warning("Please fill in Size, GSM, and BF.")
         else:
-            duplicate_found = False
+            row_payload = [
+                clean_size,
+                clean_gsm,
+                clean_bf,
+                int(new_initial_qty),
+                round(float(new_weight), 2),
+                new_remark_text.strip()
+            ]
+            clean_payload = [sanitize_value(x) for x in row_payload]
             
-            if not rill_df.empty:
-                match_condition = (
-                    (rill_df["Size"].astype(str).str.strip().str.lower() == clean_size.lower()) &
-                    (rill_df["GSM"].astype(str).str.strip().str.lower() == clean_gsm.lower()) &
-                    (rill_df["BF"].astype(str).str.strip().str.lower() == clean_bf.lower())
-                )
-                matching_rows = rill_df[match_condition]
-
-                if not matching_rows.empty:
-                    duplicate_found = True
-                    matched_idx = matching_rows.index[0]
-                    gs_row_num = int(matched_idx) + 2
-
-                    curr_qty = int(pd.to_numeric(matching_rows.iloc[0]["Quantity"], errors="coerce") or 0)
-                    updated_qty = curr_qty + int(new_initial_qty)
-                    
-                    curr_weight = float(pd.to_numeric(matching_rows.iloc[0]["Weight"], errors="coerce") or 0.0)
-                    final_weight = round(float(new_weight), 2) if new_weight > 0 else curr_weight
-
-                    curr_remark = str(matching_rows.iloc[0]["Remark"]).strip()
-                    final_remark = new_remark_text.strip() if new_remark_text.strip() else curr_remark
-
-                    row_payload = [
-                        new_date.strftime("%d/%m/%Y"),
-                        clean_size,
-                        clean_gsm,
-                        clean_bf,
-                        int(updated_qty),
-                        final_weight,
-                        final_remark
-                    ]
-                    clean_payload = [sanitize_value(x) for x in row_payload]
-                    
-                    cell_range = f"A{gs_row_num}:G{gs_row_num}"
-                    rill_sheet.update(range_name=cell_range, values=[clean_payload])
-
-                    st.toast(f"🔄 Existing item detected! Added {new_initial_qty} rolls as Purchased. New balance: {updated_qty} rolls.")
-
-            if not duplicate_found:
-                row_payload = [
-                    new_date.strftime("%d/%m/%Y"),
-                    clean_size,
-                    clean_gsm,
-                    clean_bf,
-                    int(new_initial_qty),
-                    round(float(new_weight), 2),
-                    new_remark_text.strip()
-                ]
-                clean_payload = [sanitize_value(x) for x in row_payload]
-                
-                rill_sheet.append_row(clean_payload)
-                st.toast("✨ New rill specification added to stock sheet!")
+            rill_sheet.append_row(clean_payload)
+            st.toast("✨ New rill specification added to stock sheet!")
 
             st.cache_data.clear()
             st.session_state.submit_success = True
