@@ -1088,7 +1088,8 @@ def sanitize_value(val):
     """Converts Pandas/NumPy types, NaNs, and dates into standard Python primitives."""
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return ""
-    if isinstance(val, (datetime, date)):
+    # Safe explicit check directly against module attributes to prevent NameError
+    if isinstance(val, (datetime.date, datetime.datetime)):
         return val.strftime("%d/%m/%Y")
     if isinstance(val, (np.integer, int)):
         return int(val)
