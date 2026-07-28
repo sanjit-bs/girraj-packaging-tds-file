@@ -1106,16 +1106,22 @@ COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
 
 @st.cache_resource(ttl=3600)  
-def connect_rill_sheets():
+def connect_spreadsheet():
+    """Connects once and caches the gspread Spreadsheet object."""
     creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
     client = gspread.authorize(creds)
-    spreadsheet = client.open_by_key(SPREADSHEET_ID)
-    return spreadsheet.worksheet(WORKSHEET_MASTER), spreadsheet.worksheet(WORKSHEET_HISTORY)
+    return client.open_by_key(SPREADSHEET_ID)
 
-rill_master_sheet, rill_history_sheet = connect_rill_sheets()
+spreadsheet = connect_spreadsheet()
+
+# Get sheet references (not passed to cached functions directly)
+rill_master_sheet = spreadsheet.worksheet(WORKSHEET_MASTER)
+rill_history_sheet = spreadsheet.worksheet(WORKSHEET_HISTORY)
 
 @st.cache_data(ttl=10)
-def load_data(sheet, columns):
+def load_data(sheet_name, columns):
+    """Pass sheet_name (string) instead of the gspread worksheet object so Streamlit can cache it."""
+    sheet = spreadsheet.worksheet(sheet_name)
     records = sheet.get_all_records()
     if not records:
         return pd.DataFrame(columns=columns)
@@ -1126,9 +1132,9 @@ def load_data(sheet, columns):
             df[col] = 0 if col in ["Quantity", "Weight"] else ""
     return df[columns]
 
-# Load current dataframes
-rill_df = load_data(rill_master_sheet, COLUMNS_MASTER)
-history_df = load_data(rill_history_sheet, COLUMNS_HISTORY)
+# Load current dataframes safely passing string names
+rill_df = load_data(WORKSHEET_MASTER, COLUMNS_MASTER)
+history_df = load_data(WORKSHEET_HISTORY, COLUMNS_HISTORY)
 
 st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger & Audit Log")
