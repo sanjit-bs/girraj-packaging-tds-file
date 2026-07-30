@@ -1087,7 +1087,7 @@ else:
 # ------------------------------------------------------
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
 
-# Added "Breakup_Weight" to columns
+# Breakup_Weight is placed directly to the LEFT of Remark
 COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 
@@ -1102,7 +1102,6 @@ def parse_breakup_weights(breakup_str):
     if not breakup_str or not str(breakup_str).strip():
         return 0.0, 0, ""
     
-    # Split by comma and extract valid float numbers
     parts = [p.strip() for p in str(breakup_str).split(",") if p.strip()]
     valid_weights = []
     
@@ -1233,7 +1232,6 @@ with tab_entry:
         ]
 
     # --- UI ROUTING ---
-    
     if has_unselected:
         st.info("👆 Please select Size, GSM, and BF from the dropdowns above to proceed.")
 
@@ -1259,7 +1257,6 @@ with tab_entry:
                 key=f"bk_mod_{key_suffix_rill}"
             )
 
-        # Parse breakup inputs dynamically
         calc_weight, calc_qty, clean_breakup_str = parse_breakup_weights(raw_breakup)
 
         col_m4, col_m5, col_m6 = st.columns([1.5, 1.5, 3])
@@ -1283,7 +1280,6 @@ with tab_entry:
         with col_m6:
             new_remark = st.text_input("Remark", value="", key=f"r_mod_{key_suffix_rill}")
 
-        # Live calculation for post-transaction state
         final_qty = curr_qty + qty_change if action_type == "Purchased (+)" else curr_qty - qty_change
         final_weight = curr_weight + weight_change if action_type == "Purchased (+)" else curr_weight - weight_change
 
@@ -1437,18 +1433,17 @@ with tab_history:
             ]
 
         if "Grouped" in view_mode:
-            def join_str(series):
+            def join_str_comma(series):
                 clean_items = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                unique_items = list(dict.fromkeys(clean_items))
-                return " | ".join(unique_items)
+                return ", ".join(clean_items)
 
             display_df = (
                 filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
                 .agg({
                     "Quantity": "sum",
                     "Weight": "sum",
-                    "Breakup_Weight": join_str,
-                    "Remark": join_str
+                    "Breakup_Weight": join_str_comma,
+                    "Remark": join_str_comma
                 })
             )
         else:
