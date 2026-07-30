@@ -8,6 +8,7 @@ import datetime
 import math
 import re
 import numpy as np
+import requests
 
 st.set_page_config(page_title="GIRRAJ PACKAGING", layout="wide")
 
@@ -1381,3 +1382,40 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
+
+########################### App Script__Rill_history_log ########################################
+
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
+
+# ------------------------------------------------------
+# Load Data via Apps Script
+# ------------------------------------------------------
+@st.cache_data(ttl=5)
+def fetch_all_data():
+    try:
+        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=10)
+        data = response.json()
+        
+        master_df = pd.DataFrame(data.get("master", []))
+        history_df = pd.DataFrame(data.get("history", []))
+        
+        return master_df, history_df
+    except Exception as e:
+        st.error(f"Error connecting to Apps Script API: {e}")
+        return pd.DataFrame(), pd.DataFrame()
+
+rill_df, history_df = fetch_all_data()
+
+# ------------------------------------------------------
+# Submit Transaction via Apps Script
+# ------------------------------------------------------
+def send_update_to_sheet(payload):
+    try:
+        res = requests.post(APPS_SCRIPT_URL, json=payload, timeout=10)
+        if res.json().get("status") == "success":
+            st.toast("✅ Updated successfully!")
+            st.cache_data.clear()
+            st.rerun()
+    except Exception as e:
+        st.error(f"Failed to send update: {e}")
+
