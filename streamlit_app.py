@@ -1139,6 +1139,10 @@ history_df = load_data(WORKSHEET_HISTORY, COLUMNS_HISTORY)
 
 st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger & Audit Log")
+
+# Initialize form key if not exists
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
 key_suffix_rill = st.session_state.form_key
 
 # Tabs for Operations vs History
@@ -1159,25 +1163,35 @@ with tab_entry:
     with col_s3:
         selected_bf = st.selectbox("BF *", options=["Select BF..."] + unique_bfs + ["➕ New BF"], key=f"b_{key_suffix_rill}")
 
-    is_new_entry = (
-        "➕ New Size" in selected_size or 
-        "➕ New GSM" in selected_gsm or 
-        "➕ New BF" in selected_bf or
-        selected_size == "Select Size..." or
-        selected_gsm == "Select GSM..." or
+    # Logic gates to determine what the user is trying to do
+    has_unselected = (
+        selected_size == "Select Size..." or 
+        selected_gsm == "Select GSM..." or 
         selected_bf == "Select BF..."
     )
 
+    explicit_new_requested = (
+        selected_size == "➕ New Size" or 
+        selected_gsm == "➕ New GSM" or 
+        selected_bf == "➕ New BF"
+    )
+
     matched_rows = pd.DataFrame()
-    if not is_new_entry and not rill_df.empty:
+    if not has_unselected and not explicit_new_requested and not rill_df.empty:
         matched_rows = rill_df[
             (rill_df["Size"].astype(str).str.strip().str.lower() == selected_size.lower()) &
             (rill_df["GSM"].astype(str).str.strip().str.lower() == selected_gsm.lower()) &
             (rill_df["BF"].astype(str).str.strip().str.lower() == selected_bf.lower())
         ]
 
-    # Mode A: Existing Item Modification
-    if not matched_rows.empty:
+    # --- UI ROUTING ---
+    
+    # 1. User hasn't finished selecting from dropdowns
+    if has_unselected:
+        st.info("👆 Please select Size, GSM, and BF from the dropdowns above to proceed.")
+
+    # 2. Mode A: Existing Item Found -> Modify
+    elif not matched_rows.empty:
         matched_idx = matched_rows.index[0]
         matched_row = matched_rows.iloc[0]
         gs_row_num = matched_idx + 2
@@ -1186,7 +1200,7 @@ with tab_entry:
         curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
         curr_remark = str(matched_row["Remark"])
 
-        st.info(f"📌 **Current Balance:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
+        st.success(f"📌 **Current Balance:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
 
         col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns([1.5, 1.5, 1.5, 1.5, 2])
         with col_m1:
@@ -1211,12 +1225,12 @@ with tab_entry:
             elif qty_change == 0 and weight_change == 0:
                 st.warning("Please enter a quantity or weight change.")
             else:
-                # 1. Update Master Stock Row
+                # Update Master Stock Row
                 master_payload = [selected_size, selected_gsm, selected_bf, int(final_qty), round(final_weight, 2), new_remark.strip()]
                 clean_master = [sanitize_value(x) for x in master_payload]
                 rill_master_sheet.update(range_name=f"A{gs_row_num}:F{gs_row_num}", values=[clean_master])
 
-                # 2. Append to Transaction History Log
+                # Append to Transaction History Log
                 history_payload = [
                     txn_date.strftime("%d/%m/%Y"),
                     "Purchased" if action_type == "Purchased (+)" else "Used",
@@ -1235,16 +1249,25 @@ with tab_entry:
                 st.session_state.form_key += 1
                 st.rerun()
 
-    # Mode B: Add New Item Specification
+    # 3. Mode B: Unknown Combination OR "New" requested -> Add New Item
     else:
+        if not explicit_new_requested:
+            st.warning("💡 **New Combination Detected:** This exact combination of Size, GSM, and BF doesn't exist yet. Create it below.")
+        
         st.markdown("##### 📝 Create New Item Specification")
+        
+        # Pre-fill inputs with selections if they didn't explicitly pick "New"
+        default_sz = "" if selected_size == "➕ New Size" else selected_size
+        default_gsm = "" if selected_gsm == "➕ New GSM" else selected_gsm
+        default_bf = "" if selected_bf == "➕ New BF" else selected_bf
+
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            final_size = st.text_input("Size *", value="" if selected_size == "Select Size..." else (selected_size if selected_size != "➕ New Size" else ""), key=f"in_sz_{key_suffix_rill}")
+            final_size = st.text_input("Size *", value=default_sz, key=f"in_sz_{key_suffix_rill}")
         with col_f2:
-            final_gsm = st.text_input("GSM *", value="" if selected_gsm == "Select GSM..." else (selected_gsm if selected_gsm != "➕ New GSM" else ""), key=f"in_gsm_{key_suffix_rill}")
+            final_gsm = st.text_input("GSM *", value=default_gsm, key=f"in_gsm_{key_suffix_rill}")
         with col_f3:
-            final_bf = st.text_input("BF *", value="" if selected_bf == "Select BF..." else (selected_bf if selected_bf != "➕ New BF" else ""), key=f"in_bf_{key_suffix_rill}")
+            final_bf = st.text_input("BF *", value=default_bf, key=f"in_bf_{key_suffix_rill}")
 
         col_n1, col_n2, col_n3, col_n4 = st.columns([1.5, 1.5, 1.5, 2.5])
         with col_n1:
@@ -1262,11 +1285,11 @@ with tab_entry:
             if not clean_size or not clean_gsm or not clean_bf:
                 st.warning("Please fill in Size, GSM, and BF.")
             else:
-                # 1. Append to Master Sheet
+                # Append to Master Sheet
                 master_payload = [clean_size, clean_gsm, clean_bf, int(new_initial_qty), round(float(new_weight), 2), new_remark_text.strip()]
                 rill_master_sheet.append_row([sanitize_value(x) for x in master_payload])
 
-                # 2. Log initial opening stock in History Sheet
+                # Log initial opening stock in History Sheet
                 history_payload = [
                     txn_date.strftime("%d/%m/%Y"),
                     "Purchased",
