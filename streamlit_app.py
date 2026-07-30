@@ -1083,64 +1083,88 @@ else:
 
 #######################################Paper Rill Stock######################################
 # ------------------------------------------------------
-# Helper: Native Python JSON Sanitizer for gspread
+# Google Apps Script API Configuration
 # ------------------------------------------------------
-def sanitize_value(val):
-    """Converts Pandas/NumPy types, NaNs, and dates into standard Python primitives."""
-    if val is None or (isinstance(val, float) and math.isnan(val)):
-        return ""
-    if isinstance(val, (datetime.date, datetime.datetime)):
-        return val.strftime("%d/%m/%Y")
-    if isinstance(val, (np.integer, int)):
-        return int(val)
-    if isinstance(val, (np.floating, float)):
-        return float(val)
-    return str(val).strip()
-
-# ------------------------------------------------------
-# Paper Rill Stock Ledger Configuration & Connection
-# ------------------------------------------------------
-WORKSHEET_MASTER = "rill_stock"
-WORKSHEET_HISTORY = "rill_history"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
 
 COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
 
-@st.cache_resource(ttl=3600)  
-def connect_spreadsheet():
-    """Connects once and caches the gspread Spreadsheet object."""
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
-    client = gspread.authorize(creds)
-    return client.open_by_key(SPREADSHEET_ID)
+# ------------------------------------------------------
+# Load Data via Apps Script
+# ------------------------------------------------------
+@st.cache_data(ttl=5)
+def fetch_all_data():
+    try:
+        response = requests.get(
+            f"{APPS_SCRIPT_URL}?action=read_all", 
+            allow_redirects=True, 
+            timeout=10
+        )
+        
+        # Guard against HTML error pages (e.g. permission/redirect issues)
+        if "text/html" in response.headers.get("Content-Type", ""):
+            st.error("⚠️ Google returned HTML instead of JSON. Ensure Web App access is set to 'Anyone'.")
+            return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
-spreadsheet = connect_spreadsheet()
+        data = response.json()
+        
+        master_df = pd.DataFrame(data.get("master", []))
+        history_df = pd.DataFrame(data.get("history", []))
+        
+        # Ensure mandatory columns exist
+        for col in COLUMNS_MASTER:
+            if col not in master_df.columns:
+                master_df[col] = 0 if col in ["Quantity", "Weight"] else ""
+                
+        for col in COLUMNS_HISTORY:
+            if col not in history_df.columns:
+                history_df[col] = 0 if col in ["Quantity", "Weight"] else ""
 
-# Get sheet references
-rill_master_sheet = spreadsheet.worksheet(WORKSHEET_MASTER)
-rill_history_sheet = spreadsheet.worksheet(WORKSHEET_HISTORY)
+        return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
 
-@st.cache_data(ttl=10)
-def load_data(sheet_name, columns):
-    """Pass sheet_name (string) instead of the gspread worksheet object so Streamlit can cache it."""
-    sheet = spreadsheet.worksheet(sheet_name)
-    records = sheet.get_all_records()
-    if not records:
-        return pd.DataFrame(columns=columns)
-    df = pd.DataFrame(records)
-    df.columns = df.columns.str.strip()
-    for col in columns:
-        if col not in df.columns: 
-            df[col] = 0 if col in ["Quantity", "Weight"] else ""
-    return df[columns]
+    except Exception as e:
+        st.error(f"Error connecting to Apps Script API: {e}")
+        return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
-# Load current dataframes
-rill_df = load_data(WORKSHEET_MASTER, COLUMNS_MASTER)
-history_df = load_data(WORKSHEET_HISTORY, COLUMNS_HISTORY)
+# ------------------------------------------------------
+# Submit Transaction via Apps Script
+# ------------------------------------------------------
+def send_update_to_sheet(payload):
+    try:
+        res = requests.post(
+            APPS_SCRIPT_URL, 
+            json=payload, 
+            allow_redirects=True, 
+            timeout=15
+        )
+        
+        if "text/html" in res.headers.get("Content-Type", ""):
+            st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
+            return
+
+        res_data = res.json()
+        
+        if res_data.get("status") == "success":
+            st.toast("✅ Updated successfully!")
+            st.cache_data.clear()
+            st.session_state.form_key += 1
+            st.rerun()
+        else:
+            st.error(f"❌ Apps Script Error: {res_data.get('message', 'Unknown Error')}")
+
+    except Exception as e:
+        st.error(f"Failed to send update: {e}")
+
+# ------------------------------------------------------
+# Load DataFrames
+# ------------------------------------------------------
+rill_df, history_df = fetch_all_data()
 
 st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger & Audit Log")
 
-# Initialize form key if not exists
+# Initialize form key for widget resetting
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 key_suffix_rill = st.session_state.form_key
@@ -1186,19 +1210,16 @@ with tab_entry:
 
     # --- UI ROUTING ---
     
-    # 1. User hasn't finished selecting from dropdowns
+    # 1. Unselected dropdowns
     if has_unselected:
         st.info("👆 Please select Size, GSM, and BF from the dropdowns above to proceed.")
 
-    # 2. Mode A: Existing Item Found -> Modify Balance
+    # 2. Mode A: Existing Item Found -> Update Balance
     elif not matched_rows.empty:
-        matched_idx = matched_rows.index[0]
         matched_row = matched_rows.iloc[0]
-        gs_row_num = matched_idx + 2
 
         curr_qty = int(pd.to_numeric(matched_row["Quantity"], errors="coerce") or 0)
         curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
-        curr_remark = str(matched_row["Remark"])
 
         st.success(f"📌 **Current Balance:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
 
@@ -1225,31 +1246,24 @@ with tab_entry:
             elif qty_change == 0 and weight_change == 0:
                 st.warning("Please enter a quantity or weight change.")
             else:
-                # Update Master Stock Row
-                master_payload = [selected_size, selected_gsm, selected_bf, int(final_qty), round(final_weight, 2), new_remark.strip()]
-                clean_master = [sanitize_value(x) for x in master_payload]
-                rill_master_sheet.update(range_name=f"A{gs_row_num}:F{gs_row_num}", values=[clean_master])
+                # Prepare Payload for Apps Script
+                payload = {
+                    "action": "update_stock",
+                    "date": txn_date.strftime("%d/%m/%Y"),
+                    "type": "Purchased" if action_type == "Purchased (+)" else "Used",
+                    "size": str(selected_size).strip(),
+                    "gsm": str(selected_gsm).strip(),
+                    "bf": str(selected_bf).strip(),
+                    "qty_change": int(qty_change),
+                    "weight_change": float(weight_change),
+                    "new_qty": int(final_qty),
+                    "new_weight": float(final_weight),
+                    "remark": new_remark.strip()
+                }
+                
+                send_update_to_sheet(payload)
 
-                # Append to Transaction History Log
-                history_payload = [
-                    txn_date.strftime("%d/%m/%Y"),
-                    "Purchased" if action_type == "Purchased (+)" else "Used",
-                    selected_size,
-                    selected_gsm,
-                    selected_bf,
-                    int(qty_change),
-                    round(weight_change, 2),
-                    new_remark.strip()
-                ]
-                clean_history = [sanitize_value(x) for x in history_payload]
-                rill_history_sheet.append_row(clean_history)
-
-                st.toast(f"✅ Transaction logged! New stock balance: {final_qty} rolls | {final_weight:.2f} kg.")
-                st.cache_data.clear()
-                st.session_state.form_key += 1
-                st.rerun()
-
-    # 3. Mode B: Unknown Combination OR "New" requested -> Add New Item
+    # 3. Mode B: New Item Requested or Non-existent Combination
     else:
         if not explicit_new_requested:
             st.warning("💡 **New Combination Detected:** This exact combination of Size, GSM, and BF doesn't exist yet. Create it below.")
@@ -1284,33 +1298,30 @@ with tab_entry:
             if not clean_size or not clean_gsm or not clean_bf:
                 st.warning("Please fill in Size, GSM, and BF.")
             else:
-                # Append to Master Sheet
-                master_payload = [clean_size, clean_gsm, clean_bf, int(new_initial_qty), round(float(new_weight), 2), new_remark_text.strip()]
-                rill_master_sheet.append_row([sanitize_value(x) for x in master_payload])
-
-                # Log initial opening stock in History Sheet
-                history_payload = [
-                    txn_date.strftime("%d/%m/%Y"),
-                    "Purchased",
-                    clean_size,
-                    clean_gsm,
-                    clean_bf,
-                    int(new_initial_qty),
-                    round(float(new_weight), 2),
-                    f"Initial Stock - {new_remark_text.strip()}".strip(" -")
-                ]
-                rill_history_sheet.append_row([sanitize_value(x) for x in history_payload])
-
-                st.toast("✨ New rill item added and transaction logged!")
-                st.cache_data.clear()
-                st.session_state.form_key += 1
-                st.rerun()
+                # Payload for adding new item via Apps Script
+                payload = {
+                    "action": "add_new",
+                    "date": txn_date.strftime("%d/%m/%Y"),
+                    "type": "Purchased",
+                    "size": clean_size,
+                    "gsm": clean_gsm,
+                    "bf": clean_bf,
+                    "qty": int(new_initial_qty),
+                    "weight": float(new_weight),
+                    "qty_change": int(new_initial_qty),
+                    "weight_change": float(new_weight),
+                    "new_qty": int(new_initial_qty),
+                    "new_weight": float(new_weight),
+                    "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -")
+                }
+                
+                send_update_to_sheet(payload)
 
     st.markdown("### 📋 Current Stock Summary")
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------
-# Tab 2: Transaction History Log View (Aggregated by Date)
+# Tab 2: Transaction History Log View
 # ------------------------------------------------------
 with tab_history:
     st.markdown("### 📜 Date-Wise Transaction History Log")
@@ -1318,14 +1329,12 @@ with tab_history:
     if history_df.empty:
         st.info("No transaction history available yet.")
     else:
-        # Checkbox toggle to view Aggregated vs Raw individual entries
         view_mode = st.radio(
             "View Mode:", 
             options=["📊 Grouped & Summed (Daily Totals)", "📄 Detailed Raw Log"], 
             horizontal=True
         )
 
-        # Filters
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
             filter_type = st.multiselect("Filter Action Type", options=["Purchased", "Used"], default=["Purchased", "Used"])
@@ -1336,7 +1345,6 @@ with tab_history:
 
         filtered_df = history_df.copy()
 
-        # Clean types for accurate math
         filtered_df["Quantity"] = pd.to_numeric(filtered_df["Quantity"], errors="coerce").fillna(0).astype(int)
         filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0).astype(float)
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
@@ -1353,15 +1361,12 @@ with tab_history:
                 filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
-        # --- DYNAMIC AGGREGATION LOGIC ---
         if "Grouped" in view_mode:
-            # Helper to combine remarks when multiple entries are merged
             def join_remarks(series):
                 clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                unique_remarks = list(dict.fromkeys(clean_remarks))  # Preserve order & remove duplicates
+                unique_remarks = list(dict.fromkeys(clean_remarks))
                 return ", ".join(unique_remarks)
 
-            # Group by Date, Type, Size, GSM, BF and aggregate
             display_df = (
                 filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
                 .agg({
@@ -1382,40 +1387,3 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
-
-########################### App Script__Rill_history_log ########################################
-
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
-
-# ------------------------------------------------------
-# Load Data via Apps Script
-# ------------------------------------------------------
-@st.cache_data(ttl=5)
-def fetch_all_data():
-    try:
-        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=10)
-        data = response.json()
-        
-        master_df = pd.DataFrame(data.get("master", []))
-        history_df = pd.DataFrame(data.get("history", []))
-        
-        return master_df, history_df
-    except Exception as e:
-        st.error(f"Error connecting to Apps Script API: {e}")
-        return pd.DataFrame(), pd.DataFrame()
-
-rill_df, history_df = fetch_all_data()
-
-# ------------------------------------------------------
-# Submit Transaction via Apps Script
-# ------------------------------------------------------
-def send_update_to_sheet(payload):
-    try:
-        res = requests.post(APPS_SCRIPT_URL, json=payload, timeout=10)
-        if res.json().get("status") == "success":
-            st.toast("✅ Updated successfully!")
-            st.cache_data.clear()
-            st.rerun()
-    except Exception as e:
-        st.error(f"Failed to send update: {e}")
-
