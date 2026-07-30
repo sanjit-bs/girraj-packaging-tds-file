@@ -1087,8 +1087,36 @@ else:
 # ------------------------------------------------------
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
 
-COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
-COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Remark"]
+# Added "Breakup_Weight" to columns
+COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
+COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
+
+# ------------------------------------------------------
+# Helper: Parse Comma-Separated Weight String
+# ------------------------------------------------------
+def parse_breakup_weights(breakup_str):
+    """
+    Parses a string like '12.5, 15.0, 10.2' into a total weight sum and count.
+    Returns (total_sum, count, cleaned_str)
+    """
+    if not breakup_str or not str(breakup_str).strip():
+        return 0.0, 0, ""
+    
+    # Split by comma and extract valid float numbers
+    parts = [p.strip() for p in str(breakup_str).split(",") if p.strip()]
+    valid_weights = []
+    
+    for p in parts:
+        try:
+            val = float(p)
+            if val > 0:
+                valid_weights.append(val)
+        except ValueError:
+            continue
+            
+    total_sum = sum(valid_weights)
+    cleaned_str = ", ".join([f"{w:.2f}" for w in valid_weights])
+    return round(total_sum, 2), len(valid_weights), cleaned_str
 
 # ------------------------------------------------------
 # Load Data via Apps Script
@@ -1102,7 +1130,6 @@ def fetch_all_data():
             timeout=10
         )
         
-        # Guard against HTML error pages (e.g. permission/redirect issues)
         if "text/html" in response.headers.get("Content-Type", ""):
             st.error("⚠️ Google returned HTML instead of JSON. Ensure Web App access is set to 'Anyone'.")
             return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
@@ -1157,19 +1184,17 @@ def send_update_to_sheet(payload):
         st.error(f"Failed to send update: {e}")
 
 # ------------------------------------------------------
-# Load DataFrames
+# Main Application Flow
 # ------------------------------------------------------
 rill_df, history_df = fetch_all_data()
 
 st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger & Audit Log")
 
-# Initialize form key for widget resetting
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 key_suffix_rill = st.session_state.form_key
 
-# Tabs for Operations vs History
 tab_entry, tab_history = st.tabs(["⚡ Transaction Entry", "📜 History Log"])
 
 with tab_entry:
@@ -1187,7 +1212,6 @@ with tab_entry:
     with col_s3:
         selected_bf = st.selectbox("BF *", options=["Select BF..."] + unique_bfs + ["➕ New BF"], key=f"b_{key_suffix_rill}")
 
-    # Logic gates to determine UI state
     has_unselected = (
         selected_size == "Select Size..." or 
         selected_gsm == "Select GSM..." or 
@@ -1210,11 +1234,10 @@ with tab_entry:
 
     # --- UI ROUTING ---
     
-    # 1. Unselected dropdowns
     if has_unselected:
         st.info("👆 Please select Size, GSM, and BF from the dropdowns above to proceed.")
 
-    # 2. Mode A: Existing Item Found -> Update Balance
+    # Mode A: Existing Item Found -> Modify / Record Usage
     elif not matched_rows.empty:
         matched_row = matched_rows.iloc[0]
 
@@ -1223,18 +1246,44 @@ with tab_entry:
 
         st.success(f"📌 **Current Balance:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
 
-        col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns([1.5, 1.5, 1.5, 1.5, 2])
+        col_m1, col_m2, col_m3 = st.columns([1.5, 2, 2.5])
         with col_m1:
             txn_date = st.date_input("Date", value=date.today(), key=f"dt_mod_{key_suffix_rill}")
         with col_m2:
             action_type = st.radio("Action *", options=["Purchased (+)", "Used (-)"], horizontal=True, key=f"act_{key_suffix_rill}")
         with col_m3:
-            qty_change = st.number_input("Qty (Rolls) *", min_value=0, value=0, step=1, key=f"q_mod_{key_suffix_rill}")
+            raw_breakup = st.text_input(
+                "Breakup Weight Entry (kg) *", 
+                placeholder="e.g. 12.5, 15.0, 10.2", 
+                help="Enter individual weights separated by commas. Quantity and total weight will auto-calculate.",
+                key=f"bk_mod_{key_suffix_rill}"
+            )
+
+        # Parse breakup inputs dynamically
+        calc_weight, calc_qty, clean_breakup_str = parse_breakup_weights(raw_breakup)
+
+        col_m4, col_m5, col_m6 = st.columns([1.5, 1.5, 3])
         with col_m4:
-            weight_change = st.number_input("Weight (kg) *", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"w_mod_{key_suffix_rill}")
+            qty_change = st.number_input(
+                "Qty (Rolls) *", 
+                min_value=0, 
+                value=calc_qty if calc_qty > 0 else 0, 
+                step=1, 
+                key=f"q_mod_{key_suffix_rill}"
+            )
         with col_m5:
+            weight_change = st.number_input(
+                "Total Weight (kg) *", 
+                min_value=0.0, 
+                value=calc_weight if calc_weight > 0 else 0.0, 
+                step=0.1, 
+                format="%.2f", 
+                key=f"w_mod_{key_suffix_rill}"
+            )
+        with col_m6:
             new_remark = st.text_input("Remark", value="", key=f"r_mod_{key_suffix_rill}")
 
+        # Live calculation for post-transaction state
         final_qty = curr_qty + qty_change if action_type == "Purchased (+)" else curr_qty - qty_change
         final_weight = curr_weight + weight_change if action_type == "Purchased (+)" else curr_weight - weight_change
 
@@ -1244,9 +1293,8 @@ with tab_entry:
             elif action_type == "Used (-)" and weight_change > curr_weight:
                 st.warning(f"Cannot subtract {weight_change:.2f} kg! Available weight is only {curr_weight:.2f} kg.")
             elif qty_change == 0 and weight_change == 0:
-                st.warning("Please enter a quantity or weight change.")
+                st.warning("Please enter weight breakups or a non-zero quantity/weight.")
             else:
-                # Prepare Payload for Apps Script
                 payload = {
                     "action": "update_stock",
                     "date": txn_date.strftime("%d/%m/%Y"),
@@ -1258,15 +1306,16 @@ with tab_entry:
                     "weight_change": float(weight_change),
                     "new_qty": int(final_qty),
                     "new_weight": float(final_weight),
+                    "breakup_weight": clean_breakup_str,
                     "remark": new_remark.strip()
                 }
                 
                 send_update_to_sheet(payload)
 
-    # 3. Mode B: New Item Requested or Non-existent Combination
+    # Mode B: Add New Item
     else:
         if not explicit_new_requested:
-            st.warning("💡 **New Combination Detected:** This exact combination of Size, GSM, and BF doesn't exist yet. Create it below.")
+            st.warning("💡 **New Combination Detected:** Create this new specification below.")
         
         st.markdown("##### 📝 Create New Item Specification")
         
@@ -1282,14 +1331,38 @@ with tab_entry:
         with col_f3:
             final_bf = st.text_input("BF *", value=default_bf, key=f"in_bf_{key_suffix_rill}")
 
-        col_n1, col_n2, col_n3, col_n4 = st.columns([1.5, 1.5, 1.5, 2.5])
+        col_n1, col_n2 = st.columns([1.5, 4.5])
         with col_n1:
             txn_date = st.date_input("Date", value=date.today(), key=f"dt_new_{key_suffix_rill}")
         with col_n2:
-            new_initial_qty = st.number_input("Initial Quantity *", min_value=0, value=0, step=1, key=f"q_new_{key_suffix_rill}")
+            raw_breakup_new = st.text_input(
+                "Breakup Weight Entry (kg)", 
+                placeholder="e.g. 25.5, 30.0, 28.2", 
+                help="Optional: Enter initial weights separated by commas.",
+                key=f"bk_new_{key_suffix_rill}"
+            )
+
+        calc_weight_new, calc_qty_new, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
+
+        col_n3, col_n4, col_n5 = st.columns([1.5, 1.5, 3])
         with col_n3:
-            new_weight = st.number_input("Initial Weight (kg) *", min_value=0.0, value=0.0, step=0.1, format="%.2f", key=f"w_new_{key_suffix_rill}")
+            new_initial_qty = st.number_input(
+                "Initial Quantity *", 
+                min_value=0, 
+                value=calc_qty_new if calc_qty_new > 0 else 0, 
+                step=1, 
+                key=f"q_new_{key_suffix_rill}"
+            )
         with col_n4:
+            new_weight = st.number_input(
+                "Initial Weight (kg) *", 
+                min_value=0.0, 
+                value=calc_weight_new if calc_weight_new > 0 else 0.0, 
+                step=0.1, 
+                format="%.2f", 
+                key=f"w_new_{key_suffix_rill}"
+            )
+        with col_n5:
             new_remark_text = st.text_input("Remark", key=f"r_new_{key_suffix_rill}")
 
         if st.button("Save New Stock Item", type="primary", key="btn_add_new_rill"):
@@ -1298,7 +1371,6 @@ with tab_entry:
             if not clean_size or not clean_gsm or not clean_bf:
                 st.warning("Please fill in Size, GSM, and BF.")
             else:
-                # Payload for adding new item via Apps Script
                 payload = {
                     "action": "add_new",
                     "date": txn_date.strftime("%d/%m/%Y"),
@@ -1312,6 +1384,7 @@ with tab_entry:
                     "weight_change": float(new_weight),
                     "new_qty": int(new_initial_qty),
                     "new_weight": float(new_weight),
+                    "breakup_weight": clean_breakup_new,
                     "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -")
                 }
                 
@@ -1341,7 +1414,7 @@ with tab_history:
         with col_h2:
             filter_size = st.multiselect("Filter Size", options=sorted(history_df["Size"].astype(str).unique()))
         with col_h3:
-            search_text = st.text_input("Search Remarks/Specs")
+            search_text = st.text_input("Search Remarks/Breakups/Specs")
 
         filtered_df = history_df.copy()
 
@@ -1350,6 +1423,7 @@ with tab_history:
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
         filtered_df["BF"] = filtered_df["BF"].astype(str).str.strip()
+        filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).fillna("")
 
         if filter_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(filter_type)]
@@ -1358,21 +1432,23 @@ with tab_history:
         if search_text:
             filtered_df = filtered_df[
                 filtered_df["Remark"].astype(str).str.contains(search_text, case=False) |
+                filtered_df["Breakup_Weight"].str.contains(search_text, case=False) |
                 filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
         if "Grouped" in view_mode:
-            def join_remarks(series):
-                clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                unique_remarks = list(dict.fromkeys(clean_remarks))
-                return ", ".join(unique_remarks)
+            def join_str(series):
+                clean_items = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
+                unique_items = list(dict.fromkeys(clean_items))
+                return " | ".join(unique_items)
 
             display_df = (
                 filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
                 .agg({
                     "Quantity": "sum",
                     "Weight": "sum",
-                    "Remark": join_remarks
+                    "Breakup_Weight": join_str,
+                    "Remark": join_str
                 })
             )
         else:
@@ -1382,7 +1458,8 @@ with tab_history:
             display_df,
             column_config={
                 "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
-                "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f")
+                "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f"),
+                "Breakup_Weight": st.column_config.TextColumn("Breakup Weight Entry")
             },
             use_container_width=True,
             hide_index=True
