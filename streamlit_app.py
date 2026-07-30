@@ -1088,7 +1088,6 @@ def sanitize_value(val):
     """Converts Pandas/NumPy types, NaNs, and dates into standard Python primitives."""
     if val is None or (isinstance(val, float) and math.isnan(val)):
         return ""
-    # Safe explicit check directly against module attributes to prevent NameError
     if isinstance(val, (datetime.date, datetime.datetime)):
         return val.strftime("%d/%m/%Y")
     if isinstance(val, (np.integer, int)):
@@ -1115,7 +1114,7 @@ def connect_spreadsheet():
 
 spreadsheet = connect_spreadsheet()
 
-# Get sheet references (not passed to cached functions directly)
+# Get sheet references
 rill_master_sheet = spreadsheet.worksheet(WORKSHEET_MASTER)
 rill_history_sheet = spreadsheet.worksheet(WORKSHEET_HISTORY)
 
@@ -1133,7 +1132,7 @@ def load_data(sheet_name, columns):
             df[col] = 0 if col in ["Quantity", "Weight"] else ""
     return df[columns]
 
-# Load current dataframes safely passing string names
+# Load current dataframes
 rill_df = load_data(WORKSHEET_MASTER, COLUMNS_MASTER)
 history_df = load_data(WORKSHEET_HISTORY, COLUMNS_HISTORY)
 
@@ -1163,7 +1162,7 @@ with tab_entry:
     with col_s3:
         selected_bf = st.selectbox("BF *", options=["Select BF..."] + unique_bfs + ["➕ New BF"], key=f"b_{key_suffix_rill}")
 
-    # Logic gates to determine what the user is trying to do
+    # Logic gates to determine UI state
     has_unselected = (
         selected_size == "Select Size..." or 
         selected_gsm == "Select GSM..." or 
@@ -1190,7 +1189,7 @@ with tab_entry:
     if has_unselected:
         st.info("👆 Please select Size, GSM, and BF from the dropdowns above to proceed.")
 
-    # 2. Mode A: Existing Item Found -> Modify
+    # 2. Mode A: Existing Item Found -> Modify Balance
     elif not matched_rows.empty:
         matched_idx = matched_rows.index[0]
         matched_row = matched_rows.iloc[0]
@@ -1256,7 +1255,6 @@ with tab_entry:
         
         st.markdown("##### 📝 Create New Item Specification")
         
-        # Pre-fill inputs with selections if they didn't explicitly pick "New"
         default_sz = "" if selected_size == "➕ New Size" else selected_size
         default_gsm = "" if selected_gsm == "➕ New GSM" else selected_gsm
         default_bf = "" if selected_bf == "➕ New BF" else selected_bf
@@ -1311,7 +1309,7 @@ with tab_entry:
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------
-# Tab 2: Transaction History Log View
+# Tab 2: Transaction History Log View (Aggregated by Date)
 # ------------------------------------------------------
 with tab_history:
     st.markdown("### 📜 Date-Wise Transaction History Log")
@@ -1319,7 +1317,14 @@ with tab_history:
     if history_df.empty:
         st.info("No transaction history available yet.")
     else:
-        # Filter options
+        # Checkbox toggle to view Aggregated vs Raw individual entries
+        view_mode = st.radio(
+            "View Mode:", 
+            options=["📊 Grouped & Summed (Daily Totals)", "📄 Detailed Raw Log"], 
+            horizontal=True
+        )
+
+        # Filters
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
             filter_type = st.multiselect("Filter Action Type", options=["Purchased", "Used"], default=["Purchased", "Used"])
@@ -1330,18 +1335,45 @@ with tab_history:
 
         filtered_df = history_df.copy()
 
+        # Clean types for accurate math
+        filtered_df["Quantity"] = pd.to_numeric(filtered_df["Quantity"], errors="coerce").fillna(0).astype(int)
+        filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0).astype(float)
+        filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
+        filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
+        filtered_df["BF"] = filtered_df["BF"].astype(str).str.strip()
+
         if filter_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(filter_type)]
         if filter_size:
-            filtered_df = filtered_df[filtered_df["Size"].astype(str).isin(filter_size)]
+            filtered_df = filtered_df[filtered_df["Size"].isin(filter_size)]
         if search_text:
             filtered_df = filtered_df[
                 filtered_df["Remark"].astype(str).str.contains(search_text, case=False) |
-                filtered_df["Size"].astype(str).str.contains(search_text, case=False)
+                filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
+        # --- DYNAMIC AGGREGATION LOGIC ---
+        if "Grouped" in view_mode:
+            # Helper to combine remarks when multiple entries are merged
+            def join_remarks(series):
+                clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
+                unique_remarks = list(dict.fromkeys(clean_remarks))  # Preserve order & remove duplicates
+                return ", ".join(unique_remarks)
+
+            # Group by Date, Type, Size, GSM, BF and aggregate
+            display_df = (
+                filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
+                .agg({
+                    "Quantity": "sum",
+                    "Weight": "sum",
+                    "Remark": join_remarks
+                })
+            )
+        else:
+            display_df = filtered_df
+
         st.dataframe(
-            filtered_df,
+            display_df,
             column_config={
                 "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
                 "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f")
