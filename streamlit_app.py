@@ -1242,7 +1242,7 @@ with tab_entry:
                 # Update Master Stock Row
                 master_payload = [selected_size, selected_gsm, selected_bf, int(final_qty), round(final_weight, 2), new_remark.strip()]
                 clean_master = [sanitize_value(x) for x in master_payload]
-                rill_master_sheet.update(range_name=f"A{gs_row_num}:F{gs_row_num}", values=[clean_master])
+                rill_master_sheet.update(f"A{gs_row_num}:F{gs_row_num}", [clean_master])
 
                 # Append to Transaction History Log
                 history_payload = [
