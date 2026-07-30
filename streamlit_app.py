@@ -1108,46 +1108,31 @@ COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "R
 @st.cache_resource(ttl=3600)  
 def connect_spreadsheet():
     """Connects once and caches the gspread Spreadsheet object."""
-    try:
-        creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
-        client = gspread.authorize(creds)
-        return client.open_by_key(SPREADSHEET_ID)
-    except Exception as e:
-        st.error(f"❌ Failed to connect to Google Sheets. Check SPREADSHEET_ID & Credentials: {e}")
-        return None
+    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    client = gspread.authorize(creds)
+    return client.open_by_key(SPREADSHEET_ID)
 
 spreadsheet = connect_spreadsheet()
 
+# Get sheet references
+rill_master_sheet = spreadsheet.worksheet(WORKSHEET_MASTER)
+rill_history_sheet = spreadsheet.worksheet(WORKSHEET_HISTORY)
+
 @st.cache_data(ttl=10)
 def load_data(sheet_name, columns):
-    """Pass sheet_name (string) safely and handle API quota / empty sheet errors."""
-    if spreadsheet is None:
+    """Pass sheet_name (string) instead of the gspread worksheet object so Streamlit can cache it."""
+    sheet = spreadsheet.worksheet(sheet_name)
+    records = sheet.get_all_records()
+    if not records:
         return pd.DataFrame(columns=columns)
-        
-    try:
-        sheet = spreadsheet.worksheet(sheet_name)
-        records = sheet.get_all_records()
-        if not records:
-            return pd.DataFrame(columns=columns)
-        
-        df = pd.DataFrame(records)
-        df.columns = df.columns.str.strip()
-        for col in columns:
-            if col not in df.columns: 
-                df[col] = 0 if col in ["Quantity", "Weight"] else ""
-        return df[columns]
-        
-    except gspread.exceptions.WorksheetNotFound:
-        st.error(f"❌ Worksheet '{sheet_name}' was not found in your Google Sheet! Please check the tab name.")
-        return pd.DataFrame(columns=columns)
-    except gspread.exceptions.APIError as e:
-        st.error(f"⚠️ Google Sheets API Error on '{sheet_name}': {e}. Wait a few seconds and refresh.")
-        return pd.DataFrame(columns=columns)
-    except Exception as e:
-        st.error(f"Unexpected error loading data from '{sheet_name}': {e}")
-        return pd.DataFrame(columns=columns)
+    df = pd.DataFrame(records)
+    df.columns = df.columns.str.strip()
+    for col in columns:
+        if col not in df.columns: 
+            df[col] = 0 if col in ["Quantity", "Weight"] else ""
+    return df[columns]
 
-# Load current dataframes safely
+# Load current dataframes
 rill_df = load_data(WORKSHEET_MASTER, COLUMNS_MASTER)
 history_df = load_data(WORKSHEET_HISTORY, COLUMNS_HISTORY)
 
@@ -1242,7 +1227,7 @@ with tab_entry:
                 # Update Master Stock Row
                 master_payload = [selected_size, selected_gsm, selected_bf, int(final_qty), round(final_weight, 2), new_remark.strip()]
                 clean_master = [sanitize_value(x) for x in master_payload]
-                rill_master_sheet.update(f"A{gs_row_num}:F{gs_row_num}", [clean_master])
+                rill_master_sheet.update(range_name=f"A{gs_row_num}:F{gs_row_num}", values=[clean_master])
 
                 # Append to Transaction History Log
                 history_payload = [
