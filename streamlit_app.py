@@ -1815,11 +1815,12 @@ with tab_entry:
 
     col_s1, col_s2, col_s3 = st.columns(3)
     with col_s1:
-        selected_size = st.selectbox("Size *", options=["Select Size..."] + unique_sizes + ["➕ New Size"], key=f"s_{key_suffix_rill}")
+        # Added 'rill_' prefix to avoid collisions across different tabs/sections
+        selected_size = st.selectbox("Size *", options=["Select Size..."] + unique_sizes + ["➕ New Size"], key=f"rill_s_{key_suffix_rill}")
     with col_s2:
-        selected_gsm = st.selectbox("GSM *", options=["Select GSM..."] + unique_gsms + ["➕ New GSM"], key=f"g_{key_suffix_rill}")
+        selected_gsm = st.selectbox("GSM *", options=["Select GSM..."] + unique_gsms + ["➕ New GSM"], key=f"rill_g_{key_suffix_rill}")
     with col_s3:
-        selected_bf = st.selectbox("BF *", options=["Select BF..."] + unique_bfs + ["➕ New BF"], key=f"b_{key_suffix_rill}")
+        selected_bf = st.selectbox("BF *", options=["Select BF..."] + unique_bfs + ["➕ New BF"], key=f"rill_b_{key_suffix_rill}")
 
     has_unselected = (
         selected_size == "Select Size..." or 
