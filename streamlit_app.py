@@ -390,19 +390,36 @@ st.download_button(
     file_name="Payment_Report.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 )
-######-----------------------------------------------------Transport Record Section------------------------------------------------------------#######
+# ======================================================
+# Transport Record Section
+# ======================================================
 
 WORKSHEET_NAME2 = "Delivery_Record"
-WORKSHEET_NAME3 = "Inv_Value" 
+WORKSHEET_NAME3 = "Inv_Value"
 
 COLUMNS2 = [
-    "Date", "Vehicle No.", "Invoice No.", "Driver", 
-    "Owner", "Company & Location", "Invoice Received", "Remark", "Loading Charge", "Unloading Charge"
+    "Date",
+    "Vehicle No.",
+    "Invoice No.",
+    "Driver",
+    "Owner",
+    "Company & Location",
+    "Invoice Received",
+    "Remark",
+    "Loading Charge",
+    "Unloading Charge",
 ]
 
 COLUMNS3 = [
-    "Date", "Company", "Invoice No.", "Taxable Value", 
-    "SGST", "CGST", "Total GST", "Round Off", "Total Value"
+    "Date",
+    "Company",
+    "Invoice No.",
+    "Taxable Value",
+    "SGST",
+    "CGST",
+    "Total GST",
+    "Round Off",
+    "Total Value",
 ]
 
 COMPANY_OPTIONS = [
@@ -414,7 +431,7 @@ COMPANY_OPTIONS = [
     "Agarwal Food Product (Sankrail)",
     "Pamir Ice Cream (Raiganj)",
     "Top notch (Gaighata)",
-    "Cold Roll (Gaighata)"
+    "Cold Roll (Gaighata)",
 ]
 
 VEHICLE_MASTER = {
@@ -426,57 +443,85 @@ VEHICLE_MASTER = {
     "WB25P9492": {"driver": "Badal", "owner": "D Biswas"},
     "WB25H7255": {"driver": "", "owner": "Chotu"},
     "WB25H5255": {"driver": "", "owner": "Chotu"},
-    "Others": {"driver": "", "owner": ""}
+    "Others": {"driver": "", "owner": ""},
 }
+
 
 # ======================================================
 # Cached Database Connectors
 # ======================================================
-@st.cache_resource(ttl=3600)  
+@st.cache_resource(ttl=3600)
 def connect_delivery_sheet():
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
     client = gspread.authorize(creds)
     return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME2)
 
-@st.cache_resource(ttl=3600)  
+
+@st.cache_resource(ttl=3600)
 def connect_invoice_value_sheet():
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=SCOPES)
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
     client = gspread.authorize(creds)
     return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME3)
+
 
 delivery_sheet = connect_delivery_sheet()
 inv_value_sheet = connect_invoice_value_sheet()
 
+
 @st.cache_data(ttl=10)
 def load_delivery_data():
-    records = delivery_sheet.get_all_records()
-    if not records:
+    raw_data = delivery_sheet.get_all_values()
+    if not raw_data or len(raw_data) < 2:
         return pd.DataFrame(columns=COLUMNS2)
-    df = pd.DataFrame(records)
-    df.columns = df.columns.str.strip()
+
+    headers = [str(h).strip() for h in raw_data[0]]
+    df = pd.DataFrame(raw_data[1:], columns=headers)
+
     for col in COLUMNS2:
-        if col not in df.columns: df[col] = ""
-    df = df[COLUMNS2]
+        if col not in df.columns:
+            df[col] = ""
+
+    df = df[COLUMNS2].copy()
     df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce")
-    text_cols = ["Vehicle No.", "Invoice No.", "Driver", "Owner", "Company & Location", "Invoice Received", "Remark"]
+    text_cols = [
+        "Vehicle No.",
+        "Invoice No.",
+        "Driver",
+        "Owner",
+        "Company & Location",
+        "Invoice Received",
+        "Remark",
+    ]
     for col in text_cols:
         df[col] = df[col].astype(str).str.strip()
+
     return df
+
 
 @st.cache_data(ttl=10)
 def load_invoice_value_data():
-    records = inv_value_sheet.get_all_records()
-    if not records:
+    raw_data = inv_value_sheet.get_all_values()
+    if not raw_data or len(raw_data) < 2:
         return pd.DataFrame(columns=COLUMNS3)
-    df = pd.DataFrame(records)
-    df.columns = df.columns.str.strip()
+
+    headers = [str(h).strip() for h in raw_data[0]]
+    df = pd.DataFrame(raw_data[1:], columns=headers)
+
     for col in COLUMNS3:
-        if col not in df.columns: df[col] = 0.0 if "Value" in col or "GST" in col else ""
-    df = df[COLUMNS3]
+        if col not in df.columns:
+            df[col] = 0.0 if "Value" in col or "GST" in col else ""
+
+    df = df[COLUMNS3].copy()
     return df
+
 
 delivery_df = load_delivery_data()
 inv_value_df = load_invoice_value_data()
+
 
 # ======================================================
 # Auto-Increment Sequence Logic
@@ -489,41 +534,46 @@ def get_next_invoice_number(df):
     if not valid_invoices:
         return "1"
     last_invoice = valid_invoices[-1]
-    match = re.search(r'(\d+)$', last_invoice)
+    match = re.search(r"(\d+)$", last_invoice)
     if match:
         num_part = match.group(1)
         next_num = int(num_part) + 1
         next_num_str = str(next_num).zfill(len(num_part))
-        return last_invoice[:match.start()] + next_num_str
+        return last_invoice[: match.start()] + next_num_str
     return "1"
+
 
 suggested_next_invoice = get_next_invoice_number(delivery_df)
 
 # ======================================================
 # Runtime Session States
 # ======================================================
-if "submit_success" not in st.session_state: st.session_state.submit_success = False
-if "form_key" not in st.session_state: st.session_state.form_key = 0
-if "current_driver" not in st.session_state: st.session_state.current_driver = ""
-if "current_owner" not in st.session_state: st.session_state.current_owner = ""
-if "current_invoice" not in st.session_state: st.session_state.current_invoice = suggested_next_invoice
+if "submit_success" not in st.session_state:
+    st.session_state.submit_success = False
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
+if "current_driver" not in st.session_state:
+    st.session_state.current_driver = ""
+if "current_owner" not in st.session_state:
+    st.session_state.current_owner = ""
+if "current_invoice" not in st.session_state:
+    st.session_state.current_invoice = suggested_next_invoice
 
 if st.session_state.submit_success:
     st.success("✅ Log Entry Appended Successfully")
     st.session_state.submit_success = False
 
+
 def update_vehicle_details():
-    # 1. Fetch the selected vehicle from the selectbox
     sel = st.session_state[f"v_sel_{st.session_state.form_key}"]
-    
-    # 2. Push the master values directly into the session states
     st.session_state.current_driver = VEHICLE_MASTER[sel]["driver"]
     st.session_state.current_owner = VEHICLE_MASTER[sel]["owner"]
-    
-    # 3. FIX: Instantly force-assign those values to the active text_input widget keys
     key_suffix = st.session_state.form_key
-    st.session_state[f"driver_field_{key_suffix}"] = VEHICLE_MASTER[sel]["driver"]
+    st.session_state[f"driver_field_{key_suffix}"] = VEHICLE_MASTER[sel][
+        "driver"
+    ]
     st.session_state[f"owner_field_{key_suffix}"] = VEHICLE_MASTER[sel]["owner"]
+
 
 # ======================================================
 # Tab Layout Organization
@@ -536,51 +586,80 @@ with tab1:
 
     col1, col2 = st.columns(2)
     with col1:
-        vehicle_selection = st.selectbox("Vehicle No. *", options=list(VEHICLE_MASTER.keys()), key=f"v_sel_{key_suffix}", on_change=update_vehicle_details)
-        final_vehicle_no = st.text_input("Manual Vehicle No. *", key=f"v_manual_{key_suffix}") if vehicle_selection == "Others" else vehicle_selection
+        vehicle_selection = st.selectbox(
+            "Vehicle No. *",
+            options=list(VEHICLE_MASTER.keys()),
+            key=f"v_sel_{key_suffix}",
+            on_change=update_vehicle_details,
+        )
+        final_vehicle_no = (
+            st.text_input(
+                "Manual Vehicle No. *", key=f"v_manual_{key_suffix}"
+            )
+            if vehicle_selection == "Others"
+            else vehicle_selection
+        )
     with col2:
-        # FIX: Separation of key logic and fallback value logic
         invoice_no = st.text_input(
-            "Invoice Number *", 
+            "Invoice Number *",
             value=st.session_state.current_invoice,
-            key=f"delivery_entry_invoice_field_{key_suffix}"
+            key=f"delivery_entry_invoice_field_{key_suffix}",
         )
 
     col3, col4 = st.columns(2)
     with col3:
-        # FIX: Aligned inside block
         driver_name = st.text_input(
-            "Driver", 
+            "Driver",
             value=st.session_state.current_driver,
-            key=f"driver_field_{key_suffix}"
+            key=f"driver_field_{key_suffix}",
         )
     with col4:
-        # FIX: Aligned inside block
         owner_name = st.text_input(
-            "Owner", 
+            "Owner",
             value=st.session_state.current_owner,
-            key=f"owner_field_{key_suffix}"
+            key=f"owner_field_{key_suffix}",
         )
-        
-    company = st.selectbox("Company & Location *", options=COMPANY_OPTIONS, key=f"delivery_company_{key_suffix}")
+
+    company = st.selectbox(
+        "Company & Location *",
+        options=COMPANY_OPTIONS,
+        key=f"delivery_company_{key_suffix}",
+    )
     remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
-    delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}")
+    delivery_date = st.date_input(
+        "Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}"
+    )
 
     if st.button("Submit Delivery Log", type="primary"):
-        if vehicle_selection == "Select": st.warning("Please select a Vehicle Number.")
-        elif final_vehicle_no.strip() == "": st.warning("Please enter the Manual Vehicle Number.")
-        elif invoice_no.strip() == "": st.warning("Please enter Invoice Number.")
-        elif company == "Select": st.warning("Please choose a valid Company.")
+        if vehicle_selection == "Select":
+            st.warning("Please select a Vehicle Number.")
+        elif final_vehicle_no.strip() == "":
+            st.warning("Please enter the Manual Vehicle Number.")
+        elif invoice_no.strip() == "":
+            st.warning("Please enter Invoice Number.")
+        elif company == "Select":
+            st.warning("Please choose a valid Company.")
         else:
+            # Full 10-column alignment matching COLUMNS2
             delivery_sheet.append_row([
-                delivery_date.strftime("%d/%m/%Y"), final_vehicle_no.strip().upper(), 
-                invoice_no.strip(), driver_name.strip(), owner_name.strip(), company.strip(), "No", remark.strip()
+                delivery_date.strftime("%d/%m/%Y"),
+                final_vehicle_no.strip().upper(),
+                invoice_no.strip(),
+                driver_name.strip(),
+                owner_name.strip(),
+                company.strip(),
+                "No",
+                remark.strip(),
+                0.0,
+                0.0,
             ])
             st.cache_data.clear()
             fresh_df = load_delivery_data()
             st.session_state.current_driver = ""
             st.session_state.current_owner = ""
-            st.session_state.current_invoice = get_next_invoice_number(fresh_df)
+            st.session_state.current_invoice = get_next_invoice_number(
+                fresh_df
+            )
             st.session_state.submit_success = True
             st.session_state.form_key += 1
             st.rerun()
@@ -588,37 +667,51 @@ with tab1:
 with tab2:
     st.subheader("Invoice Value Calculations (Inv_Value)")
     key_suffix_fin = st.session_state.form_key
-    
+
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         fin_invoice_no = st.text_input(
-            "Invoice Number *", 
-            value=st.session_state.current_invoice, 
-            key=f"fin_invoice_field_{key_suffix_fin}"
+            "Invoice Number *",
+            value=st.session_state.current_invoice,
+            key=f"fin_invoice_field_{key_suffix_fin}",
         )
     with col_f2:
-        fin_company = st.selectbox("Company *", options=COMPANY_OPTIONS, key=f"fin_company_{key_suffix_fin}")
-        
-    fin_date = st.date_input("Invoice Date", value=date.today(), key=f"fin_date_{key_suffix_fin}")
-    
+        fin_company = st.selectbox(
+            "Company *",
+            options=COMPANY_OPTIONS,
+            key=f"fin_company_{key_suffix_fin}",
+        )
+
+    fin_date = st.date_input(
+        "Invoice Date",
+        value=date.today(),
+        key=f"fin_date_{key_suffix_fin}",
+    )
+
     col_tax, col_round = st.columns(2)
     with col_tax:
-        taxable_value = st.number_input("Enter Taxable Value *", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"fin_taxable_{key_suffix_fin}")
+        taxable_value = st.number_input(
+            "Enter Taxable Value *",
+            min_value=0.0,
+            value=0.0,
+            step=100.0,
+            format="%.2f",
+            key=f"fin_taxable_{key_suffix_fin}",
+        )
     with col_round:
-        round_off = st.number_input("Round Up/Off (+/-)", value=0.0, step=0.01, format="%.2f", key=f"fin_round_{key_suffix_fin}")
-    
-    # 1. Calculate the raw values
+        round_off = st.number_input(
+            "Round Up/Off (+/-)",
+            value=0.0,
+            step=0.01,
+            format="%.2f",
+            key=f"fin_round_{key_suffix_fin}",
+        )
+
     sgst_raw = taxable_value * 0.025
     cgst_raw = taxable_value * 0.025
-
-    # 2. Force round each component immediately to 2 decimal places
     sgst_val = round(sgst_raw, 2)
     cgst_val = round(cgst_raw, 2)
-
-    # 3. Sum the rounded components so there are no hidden decimals
     total_gst = sgst_val + cgst_val
-
-    # 4. Calculate final total value smoothly
     total_value = round(taxable_value + total_gst + round_off, 2)
 
     st.markdown("### 📊 Live Tax Calculation Breakdown")
@@ -626,8 +719,11 @@ with tab2:
     c_m1.metric("SGST (2.5%)", f"₹ {sgst_val:,.2f}")
     c_m2.metric("CGST (2.5%)", f"₹ {cgst_val:,.2f}")
     c_m3.metric("Total GST (5%)", f"₹ {total_gst:,.2f}")
-    
-    st.metric("📦 Final Total Value (Taxable + GST + Round Off)", f"₹ {total_value:,.2f}")
+
+    st.metric(
+        "📦 Final Total Value (Taxable + GST + Round Off)",
+        f"₹ {total_value:,.2f}",
+    )
 
     if st.button("Submit Financial Value Log", type="primary"):
         if fin_company == "Select":
@@ -638,66 +734,84 @@ with tab2:
             st.warning("Please ensure Invoice Number is not empty.")
         else:
             inv_value_sheet.append_row([
-                fin_date.strftime("%d/%m/%Y"), 
-                fin_company.strip(), 
+                fin_date.strftime("%d/%m/%Y"),
+                fin_company.strip(),
                 fin_invoice_no.strip(),
-                round(taxable_value, 2), 
-                round(sgst_val, 2), 
-                round(cgst_val, 2), 
+                round(taxable_value, 2),
+                round(sgst_val, 2),
+                round(cgst_val, 2),
                 round(total_gst, 2),
-                round(round_off, 2),   
-                round(total_value, 2)
+                round(round_off, 2),
+                round(total_value, 2),
             ])
             st.cache_data.clear()
             fresh_df = load_delivery_data()
-            st.session_state.current_invoice = get_next_invoice_number(fresh_df)
+            st.session_state.current_invoice = get_next_invoice_number(
+                fresh_df
+            )
             st.session_state.submit_success = True
             st.session_state.form_key += 1
-            st.rerun() # FIX: Removed trailing comma
+            st.rerun()
+
 # ======================================================
 # UI Section: Pending Deliveries Management
 # ======================================================
 st.markdown("---")
 st.subheader("📋 Pending Deliveries (Not Received)")
-pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
+pending_df = delivery_df[
+    delivery_df["Invoice Received"].str.strip().str.lower() == "no"
+]
 
 if pending_df.empty:
     st.info("🎉 All deliveries have been successfully received!")
 else:
-    col_h1, col_h2, col_h3, col_h4, col_h5, col_h6 = st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
-    with col_h1: st.markdown("**Date**")
-    with col_h2: st.markdown("**Invoice No.**")
-    with col_h3: st.markdown("**Vehicle No.**")
-    with col_h4: st.markdown("**Driver**")
-    with col_h5: st.markdown("**Company & Location**")
-    with col_h6: st.markdown("**Action**")
+    col_h1, col_h2, col_h3, col_h4, col_h5, col_h6 = st.columns(
+        [1.2, 1.5, 1.5, 1.5, 2.5, 1]
+    )
+    with col_h1:
+        st.markdown("**Date**")
+    with col_h2:
+        st.markdown("**Invoice No.**")
+    with col_h3:
+        st.markdown("**Vehicle No.**")
+    with col_h4:
+        st.markdown("**Driver**")
+    with col_h5:
+        st.markdown("**Company & Location**")
+    with col_h6:
+        st.markdown("**Action**")
     st.markdown("---")
 
     for idx, row in pending_df.iterrows():
         gs_row = idx + 2
-        col_date, col_inv, col_veh, col_driver, col_comp, col_act = st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
-        
-        with col_date: 
-            # Safely format the date back to DD/MM/YYYY string if it's a datetime object
-            if isinstance(row["Date"], pd.Timestamp) or hasattr(row["Date"], "strftime"):
+        col_date, col_inv, col_veh, col_driver, col_comp, col_act = (
+            st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
+        )
+
+        with col_date:
+            if isinstance(row["Date"], pd.Timestamp) or hasattr(
+                row["Date"], "strftime"
+            ):
                 st.write(row["Date"].strftime("%d/%m/%Y"))
             else:
                 st.write(str(row["Date"]))
-                
-        with col_inv: 
+
+        with col_inv:
             st.write(row["Invoice No."])
-        with col_veh: 
+        with col_veh:
             st.write(row["Vehicle No."])
-        with col_driver: 
+        with col_driver:
             st.write(row["Driver"])
-        with col_comp: 
+        with col_comp:
             st.write(row["Company & Location"])
         with col_act:
             if st.checkbox("Receive", key=f"recv_approval_act_{gs_row}"):
                 delivery_sheet.update_cell(gs_row, 7, "Yes")
                 st.cache_data.clear()
                 fresh_df = load_delivery_data()
-                st.session_state.current_invoice = get_next_invoice_number(fresh_df)
+                st.session_state.current_invoice = get_next_invoice_number(
+                    fresh_df
+                )
                 st.session_state.submit_success = True
                 st.rerun()
 
@@ -707,75 +821,96 @@ else:
 st.markdown("---")
 st.subheader("💰 Add Loading & Unloading Charges")
 
-# Filter out empty or unsubmitted rows to only show valid submitted invoices
 if delivery_df.empty:
     st.info("No submitted invoices found to apply charges to.")
 else:
-    # Safely extract unique, non-empty invoice numbers for the dropdown selection
-    submitted_invoices = delivery_df["Invoice No."].dropna().astype(str).str.strip()
-    valid_invoice_options = ["Select Invoice"] + [inv for inv in submitted_invoices.unique() if inv != ""]
-    
+    submitted_invoices = (
+        delivery_df["Invoice No."].dropna().astype(str).str.strip()
+    )
+    valid_invoice_options = ["Select Invoice"] + [
+        inv for inv in submitted_invoices.unique() if inv != ""
+    ]
+
     col_c1, col_c2, col_c3 = st.columns(3)
-    
+
     with col_c1:
         selected_charge_invoice = st.selectbox(
-            "Select Submitted Invoice *", 
+            "Select Submitted Invoice *",
             options=valid_invoice_options,
-            key="charge_invoice_selector"
+            key="charge_invoice_selector",
         )
-        
-    # Locate the row index if an invoice is selected
+
     target_gs_row = None
     existing_loading = 0.0
     existing_unloading = 0.0
-    
+
     if selected_charge_invoice != "Select Invoice":
-        # Match the selected invoice row in the dataframe
-        match_idx = delivery_df[delivery_df["Invoice No."] == selected_charge_invoice].index
+        match_idx = delivery_df[
+            delivery_df["Invoice No."] == selected_charge_invoice
+        ].index
         if not match_idx.empty:
-            # Save index (gspread uses 1-based indexing, add 2 for header offset)
             target_gs_row = int(match_idx[0]) + 2
-            
-            # Fetch existing values if they already exist in the sheet to pre-fill them safely
             row_data = delivery_df.loc[match_idx[0]]
-            if "Loading Charge" in row_data and str(row_data["Loading Charge"]).strip():
-                existing_loading = float(pd.to_numeric(row_data["Loading Charge"], errors="coerce") or 0.0)
-            if "Unloading Charge" in row_data and str(row_data["Unloading Charge"]).strip():
-                existing_unloading = float(pd.to_numeric(row_data["Unloading Charge"], errors="coerce") or 0.0)
+            if "Loading Charge" in row_data and str(
+                row_data["Loading Charge"]
+            ).strip():
+                existing_loading = float(
+                    pd.to_numeric(
+                        row_data["Loading Charge"], errors="coerce"
+                    )
+                    or 0.0
+                )
+            if "Unloading Charge" in row_data and str(
+                row_data["Unloading Charge"]
+            ).strip():
+                existing_unloading = float(
+                    pd.to_numeric(
+                        row_data["Unloading Charge"], errors="coerce"
+                    )
+                    or 0.0
+                )
 
     with col_c2:
         loading_input = st.number_input(
-            "Loading Charge (₹)", 
-            min_value=0.0, 
-            value=existing_loading, 
-            step=10.0, 
+            "Loading Charge (₹)",
+            min_value=0.0,
+            value=existing_loading,
+            step=10.0,
             format="%.2f",
-            key="loading_charge_input"
-        )
-        
-    with col_c3:
-        unloading_input = st.number_input(
-            "Unloading Charge (₹)", 
-            min_value=0.0, 
-            value=existing_unloading, 
-            step=10.0, 
-            format="%.2f",
-            key="unloading_charge_input"
+            key="loading_charge_input",
         )
 
-    # Submission Action Button
+    with col_c3:
+        unloading_input = st.number_input(
+            "Unloading Charge (₹)",
+            min_value=0.0,
+            value=existing_unloading,
+            step=10.0,
+            format="%.2f",
+            key="unloading_charge_input",
+        )
+
     if st.button("Save Charges to Invoice", type="secondary"):
         if selected_charge_invoice == "Select Invoice":
-            st.warning("Please choose a valid submitted invoice from the dropdown menu first.")
+            st.warning(
+                "Please choose a valid submitted invoice from the dropdown menu first."
+            )
         elif target_gs_row is None:
-            st.error("Could not trace the structural coordinates of this invoice in Google Sheets.")
+            st.error(
+                "Could not trace the structural coordinates of this invoice in Google Sheets."
+            )
         else:
-            # Column 9 is Loading Charge, Column 10 is Unloading Charge (directly after column 8: Remark)
-            delivery_sheet.update_cell(target_gs_row, 9, round(loading_input, 2))
-            delivery_sheet.update_cell(target_gs_row, 10, round(unloading_input, 2))
-            
-            st.toast(f"💵 Charges saved successfully for Invoice {selected_charge_invoice}!")
-            st.cache_data.clear()  # Drop cached copy to load updated values immediately
+            delivery_sheet.update_cell(
+                target_gs_row, 9, round(loading_input, 2)
+            )
+            delivery_sheet.update_cell(
+                target_gs_row, 10, round(unloading_input, 2)
+            )
+
+            st.toast(
+                f"💵 Charges saved successfully for Invoice {selected_charge_invoice}!"
+            )
+            st.cache_data.clear()
             st.rerun()
 
 # ======================================================
@@ -787,30 +922,48 @@ st.subheader("🔍 Company Wise Bill Value Summary")
 if inv_value_df.empty:
     st.info("No corporate financial billing information available yet.")
 else:
-    filter_options = ["All Companies"] + [c for c in COMPANY_OPTIONS if c != "Select"]
-    selected_filter_company = st.selectbox("Select Company to View Breakdown", options=filter_options, key="bill_summary_filter_comp")
-    
+    filter_options = ["All Companies"] + [
+        c for c in COMPANY_OPTIONS if c != "Select"
+    ]
+    selected_filter_company = st.selectbox(
+        "Select Company to View Breakdown",
+        options=filter_options,
+        key="bill_summary_filter_comp",
+    )
+
     if selected_filter_company == "All Companies":
-        filtered_financial_df = inv_value_df
+        filtered_financial_df = inv_value_df.copy()
     else:
-        filtered_financial_df = inv_value_df[inv_value_df["Company"].str.strip() == selected_filter_company]
-        
+        filtered_financial_df = inv_value_df[
+            inv_value_df["Company"].str.strip() == selected_filter_company
+        ].copy()
+
     if filtered_financial_df.empty:
-        st.warning(f"No logged transactions found matching {selected_filter_company}.")
+        st.warning(
+            f"No logged transactions found matching {selected_filter_company}."
+        )
     else:
-        numeric_cols = ["Taxable Value", "SGST", "CGST", "Total GST", "Total Value"]
+        numeric_cols = [
+            "Taxable Value",
+            "SGST",
+            "CGST",
+            "Total GST",
+            "Total Value",
+        ]
         for col in numeric_cols:
-            filtered_financial_df[col] = pd.to_numeric(filtered_financial_df[col], errors="coerce").fillna(0.0)
-            
+            filtered_financial_df[col] = pd.to_numeric(
+                filtered_financial_df[col], errors="coerce"
+            ).fillna(0.0)
+
         sum_taxable = filtered_financial_df["Taxable Value"].sum()
         sum_total_gst = filtered_financial_df["Total GST"].sum()
         sum_total_val = filtered_financial_df["Total Value"].sum()
-        
+
         m_col1, m_col2, m_col3 = st.columns(3)
         m_col1.metric("Total Taxable Amt", f"₹ {sum_taxable:,.2f}")
         m_col2.metric("Accumulated GST Collected", f"₹ {sum_total_gst:,.2f}")
         m_col3.metric("Gross Aggregate Valuation", f"₹ {sum_total_val:,.2f}")
-        
+
         st.dataframe(
             filtered_financial_df,
             column_config={
@@ -818,22 +971,21 @@ else:
                 "SGST": st.column_config.NumberColumn(format="₹ %.2f"),
                 "CGST": st.column_config.NumberColumn(format="₹ %.2f"),
                 "Total GST": st.column_config.NumberColumn(format="₹ %.2f"),
-                "Total Value": st.column_config.NumberColumn(format="₹ %.2f")
+                "Total Value": st.column_config.NumberColumn(format="₹ %.2f"),
             },
             use_container_width=True,
-            hide_index=True
+            hide_index=True,
         )
-        
-        csv_data = filtered_financial_df.to_csv(index=False).encode('utf-8')
-        
+
+        csv_data = filtered_financial_df.to_csv(index=False).encode("utf-8")
+
         st.download_button(
             label="📥 Download Filtered Bill Report (CSV)",
             data=csv_data,
             file_name=f"bill_report_{selected_filter_company.replace(' ', '_').lower()}_{date.today().strftime('%Y%m%d')}.csv",
             mime="text/csv",
-            type="secondary"
+            type="secondary",
         )
-
 ############################--------------------------------------------------Stock Record----------------------------------###################################
 WORKSHEET_NAME4 = "Stock_Record"
 
