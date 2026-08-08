@@ -2039,7 +2039,7 @@ with tab_history:
         with col_h2:
             filter_size = st.multiselect(
                 "Filter Size", 
-                options=sorted(history_df["Size"].astype(str).unique()),
+                options=sorted(history_df["Size"].astype(str).str.strip().unique()),
                 key=f"rill_hist_filter_size_{key_suffix_rill}"
             )
         with col_h3:
@@ -2050,12 +2050,19 @@ with tab_history:
 
         filtered_df = history_df.copy()
 
-        filtered_df["Quantity"] = pd.to_numeric(filtered_df["Quantity"], errors="coerce").fillna(0).astype(int)
-        filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0).astype(float)
+        # ------------------------------------------------------
+        # Data Cleaning & Type Normalization (Crucial for Groupby)
+        # ------------------------------------------------------
+        filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
+        filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
         filtered_df["BF"] = filtered_df["BF"].astype(str).str.strip()
-        filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).fillna("")
+
+        filtered_df["Quantity"] = pd.to_numeric(filtered_df["Quantity"], errors="coerce").fillna(0).astype(int)
+        filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0).astype(float)
+        filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).replace("nan", "").str.strip()
+        filtered_df["Remark"] = filtered_df["Remark"].astype(str).replace("nan", "").str.strip()
 
         if filter_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(filter_type)]
@@ -2063,24 +2070,23 @@ with tab_history:
             filtered_df = filtered_df[filtered_df["Size"].isin(filter_size)]
         if search_text:
             filtered_df = filtered_df[
-                filtered_df["Remark"].astype(str).str.contains(search_text, case=False) |
+                filtered_df["Remark"].str.contains(search_text, case=False) |
                 filtered_df["Breakup_Weight"].str.contains(search_text, case=False) |
                 filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
         if "Grouped" in view_mode:
-            # Flattens all individual weight breakups across entries on the same date
+            # Flattens all individual weight breakups into a single comma-separated list
             def combine_breakups(series):
                 all_weights = []
                 for entry in series:
                     entry_str = str(entry).strip()
                     if entry_str and entry_str != "nan":
-                        # Split entries like "200, 300" into individual roll weights
                         items = [p.strip() for p in entry_str.split(",") if p.strip()]
                         all_weights.extend(items)
                 return ", ".join(all_weights)
 
-            # Combines non-empty remarks cleanly
+            # Combines remarks cleanly
             def combine_remarks(series):
                 clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
                 return " | ".join(dict.fromkeys(clean_remarks))
