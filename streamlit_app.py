@@ -1239,12 +1239,11 @@ else:
 # ------------------------------------------------------
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
 
-# Breakup_Weight is placed directly to the LEFT of Remark
 COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 
 # ------------------------------------------------------
-# Helper: Parse Comma-Separated Weight String
+# Helpers: Breakup Weight Processing
 # ------------------------------------------------------
 def parse_breakup_weights(breakup_str):
     """
@@ -1268,6 +1267,40 @@ def parse_breakup_weights(breakup_str):
     total_sum = sum(valid_weights)
     cleaned_str = ", ".join([f"{w:.2f}" for w in valid_weights])
     return round(total_sum, 2), len(valid_weights), cleaned_str
+
+
+def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
+    """
+    Updates the master stock's breakup string by appending purchased weights
+    or removing used weights.
+    Returns: (updated_master_breakup_str, missing_weights)
+    """
+    _, _, cleaned_curr = parse_breakup_weights(curr_breakup_str)
+    curr_list = [float(x.strip()) for x in cleaned_curr.split(",") if x.strip()] if cleaned_curr else []
+    
+    _, _, cleaned_txn = parse_breakup_weights(txn_breakup_str)
+    txn_list = [float(x.strip()) for x in cleaned_txn.split(",") if x.strip()] if cleaned_txn else []
+    
+    missing_weights = []
+    
+    if action_type == "Purchased (+)":
+        updated_list = curr_list + txn_list
+    else:  # "Used (-)"
+        updated_list = list(curr_list)
+        for item in txn_list:
+            match_idx = None
+            for idx, val in enumerate(updated_list):
+                if abs(val - item) < 0.01:  # Match within precision tolerance
+                    match_idx = idx
+                    break
+            if match_idx is not None:
+                updated_list.pop(match_idx)
+            else:
+                missing_weights.append(item)
+                
+    updated_str = ", ".join([f"{w:.2f}" for w in updated_list])
+    return updated_str, missing_weights
+
 
 # ------------------------------------------------------
 # Load Data via Apps Script
@@ -1305,6 +1338,7 @@ def fetch_all_data():
         st.error(f"Error connecting to Apps Script API: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
+
 # ------------------------------------------------------
 # Submit Transaction via Apps Script
 # ------------------------------------------------------
@@ -1333,6 +1367,7 @@ def send_update_to_sheet(payload):
 
     except Exception as e:
         st.error(f"Failed to send update: {e}")
+
 
 # ------------------------------------------------------
 # Main Application Flow
@@ -1393,8 +1428,11 @@ with tab_entry:
 
         curr_qty = int(pd.to_numeric(matched_row["Quantity"], errors="coerce") or 0)
         curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
+        curr_breakup = str(matched_row.get("Breakup_Weight", "")).strip()
 
         st.success(f"📌 **Current Balance:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
+        if curr_breakup:
+            st.caption(f"**Current Stock Breakup (kg):** {curr_breakup}")
 
         col_m1, col_m2, col_m3 = st.columns([1.5, 2, 2.5])
         with col_m1:
@@ -1410,6 +1448,9 @@ with tab_entry:
             )
 
         calc_weight, calc_qty, clean_breakup_str = parse_breakup_weights(raw_breakup)
+        
+        # Calculate Updated Master Breakup String
+        new_master_breakup, missing_weights = update_master_breakup(curr_breakup, raw_breakup, action_type)
 
         col_m4, col_m5, col_m6 = st.columns([1.5, 1.5, 3])
         with col_m4:
@@ -1443,6 +1484,10 @@ with tab_entry:
             elif qty_change == 0 and weight_change == 0:
                 st.warning("Please enter weight breakups or a non-zero quantity/weight.")
             else:
+                if action_type == "Used (-)" and missing_weights:
+                    missing_str = ", ".join([f"{w:.2f}" for w in missing_weights])
+                    st.info(f"ℹ️ Note: Weight(s) [{missing_str}] were not originally in the stock breakup list.")
+
                 payload = {
                     "action": "update_stock",
                     "date": txn_date.strftime("%d/%m/%Y"),
@@ -1454,7 +1499,8 @@ with tab_entry:
                     "weight_change": float(weight_change),
                     "new_qty": int(final_qty),
                     "new_weight": float(final_weight),
-                    "breakup_weight": clean_breakup_str,
+                    "breakup_weight": clean_breakup_str,         # Transaction history breakup
+                    "new_breakup_weight": new_master_breakup,   # Updated master stock breakup
                     "remark": new_remark.strip()
                 }
                 
@@ -1533,6 +1579,7 @@ with tab_entry:
                     "new_qty": int(new_initial_qty),
                     "new_weight": float(new_weight),
                     "breakup_weight": clean_breakup_new,
+                    "new_breakup_weight": clean_breakup_new,
                     "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -")
                 }
                 
