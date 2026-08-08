@@ -2024,16 +2024,29 @@ with tab_history:
         view_mode = st.radio(
             "View Mode:", 
             options=["📊 Grouped & Summed (Daily Totals)", "📄 Detailed Raw Log"], 
-            horizontal=True
+            horizontal=True,
+            key=f"rill_hist_view_mode_{key_suffix_rill}"  # Explicit unique key added here
         )
 
         col_h1, col_h2, col_h3 = st.columns(3)
         with col_h1:
-            filter_type = st.multiselect("Filter Action Type", options=["Purchased", "Used"], default=["Purchased", "Used"])
+            filter_type = st.multiselect(
+                "Filter Action Type", 
+                options=["Purchased", "Used"], 
+                default=["Purchased", "Used"],
+                key=f"rill_hist_filter_type_{key_suffix_rill}"
+            )
         with col_h2:
-            filter_size = st.multiselect("Filter Size", options=sorted(history_df["Size"].astype(str).unique()))
+            filter_size = st.multiselect(
+                "Filter Size", 
+                options=sorted(history_df["Size"].astype(str).unique()),
+                key=f"rill_hist_filter_size_{key_suffix_rill}"
+            )
         with col_h3:
-            search_text = st.text_input("Search Remarks/Breakups/Specs")
+            search_text = st.text_input(
+                "Search Remarks/Breakups/Specs",
+                key=f"rill_hist_search_{key_suffix_rill}"
+            )
 
         filtered_df = history_df.copy()
 
