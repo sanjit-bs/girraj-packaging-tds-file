@@ -2025,7 +2025,7 @@ with tab_history:
             "View Mode:", 
             options=["📊 Grouped & Summed (Daily Totals)", "📄 Detailed Raw Log"], 
             horizontal=True,
-            key=f"rill_hist_view_mode_{key_suffix_rill}"  # Explicit unique key added here
+            key=f"rill_hist_view_mode_{key_suffix_rill}"
         )
 
         col_h1, col_h2, col_h3 = st.columns(3)
@@ -2069,17 +2069,29 @@ with tab_history:
             ]
 
         if "Grouped" in view_mode:
-            def join_str_comma(series):
-                clean_items = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                return ", ".join(clean_items)
+            # Flattens all individual weight breakups across entries on the same date
+            def combine_breakups(series):
+                all_weights = []
+                for entry in series:
+                    entry_str = str(entry).strip()
+                    if entry_str and entry_str != "nan":
+                        # Split entries like "200, 300" into individual roll weights
+                        items = [p.strip() for p in entry_str.split(",") if p.strip()]
+                        all_weights.extend(items)
+                return ", ".join(all_weights)
+
+            # Combines non-empty remarks cleanly
+            def combine_remarks(series):
+                clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
+                return " | ".join(dict.fromkeys(clean_remarks))
 
             display_df = (
                 filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
                 .agg({
                     "Quantity": "sum",
                     "Weight": "sum",
-                    "Breakup_Weight": join_str_comma,
-                    "Remark": join_str_comma
+                    "Breakup_Weight": combine_breakups,
+                    "Remark": combine_remarks
                 })
             )
         else:
