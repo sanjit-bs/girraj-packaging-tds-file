@@ -1244,7 +1244,7 @@ COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 
 # ------------------------------------------------------
-# Helpers: Breakup Weight Processing
+# Helpers: Breakup Weight Processing & Callbacks
 # ------------------------------------------------------
 def parse_breakup_weights(breakup_str):
     """
@@ -1268,6 +1268,24 @@ def parse_breakup_weights(breakup_str):
     total_sum = sum(valid_weights)
     cleaned_str = ", ".join([f"{w:.2f}" for w in valid_weights])
     return round(total_sum, 2), len(valid_weights), cleaned_str
+
+
+def sync_mod_breakup():
+    """Callback to sync Mode A breakup entry into Qty and Weight fields."""
+    key_suf = st.session_state.get("form_key", 0)
+    raw = st.session_state.get(f"bk_mod_{key_suf}", "")
+    calc_w, calc_q, _ = parse_breakup_weights(raw)
+    st.session_state[f"q_mod_{key_suf}"] = int(calc_q)
+    st.session_state[f"w_mod_{key_suf}"] = float(calc_w)
+
+
+def sync_new_breakup():
+    """Callback to sync Mode B breakup entry into Qty and Weight fields."""
+    key_suf = st.session_state.get("form_key", 0)
+    raw = st.session_state.get(f"bk_new_{key_suf}", "")
+    calc_w, calc_q, _ = parse_breakup_weights(raw)
+    st.session_state[f"q_new_{key_suf}"] = int(calc_q)
+    st.session_state[f"w_new_{key_suf}"] = float(calc_w)
 
 
 def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
@@ -1393,7 +1411,6 @@ with tab_entry:
 
     col_s1, col_s2, col_s3 = st.columns(3)
     with col_s1:
-        # Added 'rill_' prefix to avoid collisions across different tabs/sections
         selected_size = st.selectbox("Size *", options=["Select Size..."] + unique_sizes + ["➕ New Size"], key=f"rill_s_{key_suffix_rill}")
     with col_s2:
         selected_gsm = st.selectbox("GSM *", options=["Select GSM..."] + unique_gsms + ["➕ New GSM"], key=f"rill_g_{key_suffix_rill}")
@@ -1446,20 +1463,24 @@ with tab_entry:
                 "Breakup Weight Entry (kg) *", 
                 placeholder="e.g. 12.5, 15.0, 10.2", 
                 help="Enter individual weights separated by commas. Quantity and total weight will auto-calculate.",
-                key=f"bk_mod_{key_suffix_rill}"
+                key=f"bk_mod_{key_suffix_rill}",
+                on_change=sync_mod_breakup
             )
 
-        calc_weight, calc_qty, clean_breakup_str = parse_breakup_weights(raw_breakup)
-        
-        # Calculate Updated Master Breakup String
+        _, _, clean_breakup_str = parse_breakup_weights(raw_breakup)
         new_master_breakup, missing_weights = update_master_breakup(curr_breakup, raw_breakup, action_type)
+
+        # Initialize widget keys in session state if not already present
+        if f"q_mod_{key_suffix_rill}" not in st.session_state:
+            st.session_state[f"q_mod_{key_suffix_rill}"] = 0
+        if f"w_mod_{key_suffix_rill}" not in st.session_state:
+            st.session_state[f"w_mod_{key_suffix_rill}"] = 0.0
 
         col_m4, col_m5, col_m6 = st.columns([1.5, 1.5, 3])
         with col_m4:
             qty_change = st.number_input(
                 "Qty (Rolls) *", 
                 min_value=0, 
-                value=calc_qty if calc_qty > 0 else 0, 
                 step=1, 
                 key=f"q_mod_{key_suffix_rill}"
             )
@@ -1467,7 +1488,6 @@ with tab_entry:
             weight_change = st.number_input(
                 "Total Weight (kg) *", 
                 min_value=0.0, 
-                value=calc_weight if calc_weight > 0 else 0.0, 
                 step=0.1, 
                 format="%.2f", 
                 key=f"w_mod_{key_suffix_rill}"
@@ -1501,8 +1521,8 @@ with tab_entry:
                     "weight_change": float(weight_change),
                     "new_qty": int(final_qty),
                     "new_weight": float(final_weight),
-                    "breakup_weight": clean_breakup_str,         # Transaction history breakup
-                    "new_breakup_weight": new_master_breakup,   # Updated master stock breakup
+                    "breakup_weight": clean_breakup_str,
+                    "new_breakup_weight": new_master_breakup,
                     "remark": new_remark.strip()
                 }
                 
@@ -1535,17 +1555,22 @@ with tab_entry:
                 "Breakup Weight Entry (kg)", 
                 placeholder="e.g. 25.5, 30.0, 28.2", 
                 help="Optional: Enter initial weights separated by commas.",
-                key=f"bk_new_{key_suffix_rill}"
+                key=f"bk_new_{key_suffix_rill}",
+                on_change=sync_new_breakup
             )
 
-        calc_weight_new, calc_qty_new, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
+        _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
+
+        if f"q_new_{key_suffix_rill}" not in st.session_state:
+            st.session_state[f"q_new_{key_suffix_rill}"] = 0
+        if f"w_new_{key_suffix_rill}" not in st.session_state:
+            st.session_state[f"w_new_{key_suffix_rill}"] = 0.0
 
         col_n3, col_n4, col_n5 = st.columns([1.5, 1.5, 3])
         with col_n3:
             new_initial_qty = st.number_input(
                 "Initial Quantity *", 
                 min_value=0, 
-                value=calc_qty_new if calc_qty_new > 0 else 0, 
                 step=1, 
                 key=f"q_new_{key_suffix_rill}"
             )
@@ -1553,7 +1578,6 @@ with tab_entry:
             new_weight = st.number_input(
                 "Initial Weight (kg) *", 
                 min_value=0.0, 
-                value=calc_weight_new if calc_weight_new > 0 else 0.0, 
                 step=0.1, 
                 format="%.2f", 
                 key=f"w_new_{key_suffix_rill}"
@@ -1628,9 +1652,7 @@ with tab_history:
 
         filtered_df = history_df.copy()
 
-        # ------------------------------------------------------
-        # Data Cleaning & Type Normalization (Crucial for Groupby)
-        # ------------------------------------------------------
+        # Data Cleaning & Type Normalization
         filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
@@ -1654,7 +1676,6 @@ with tab_history:
             ]
 
         if "Grouped" in view_mode:
-            # Flattens all individual weight breakups into a single comma-separated list
             def combine_breakups(series):
                 all_weights = []
                 for entry in series:
@@ -1664,7 +1685,6 @@ with tab_history:
                         all_weights.extend(items)
                 return ", ".join(all_weights)
 
-            # Combines remarks cleanly
             def combine_remarks(series):
                 clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
                 return " | ".join(dict.fromkeys(clean_remarks))
