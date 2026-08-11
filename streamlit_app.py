@@ -1243,6 +1243,19 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPo
 COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 
+# --- Standalone Converter Tool ---
+with st.expander("📐 Quick CM to Inches Converter"):
+    cm_input = st.number_input(
+        "Enter Size in CM", 
+        min_value=0.0, 
+        step=0.1, 
+        format="%.2f", 
+        key="standalone_cm_converter"
+    )
+    if cm_input > 0:
+        inch_result = round(cm_input / 2.54, 2)
+        st.success(f"**{cm_input:.2f} cm** = **{inch_result:.2f} Inches**")
+
 # ------------------------------------------------------
 # Helpers: Breakup Weight Processing & Callbacks
 # ------------------------------------------------------
@@ -1359,7 +1372,7 @@ def fetch_all_data():
 
 
 # ------------------------------------------------------
-# Submit Transaction via Apps Script
+# Submit Record via Apps Script
 # ------------------------------------------------------
 def send_update_to_sheet(payload):
     try:
@@ -1400,7 +1413,7 @@ if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 key_suffix_rill = st.session_state.form_key
 
-tab_entry, tab_history = st.tabs(["⚡ Transaction Entry", "📜 History Log"])
+tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 with tab_entry:
     st.markdown("##### 🔍 Select Specification")
@@ -1449,7 +1462,7 @@ with tab_entry:
         curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
         curr_breakup = str(matched_row.get("Breakup_Weight", "")).strip()
 
-        st.success(f"📌 **Current Balance:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
+        st.success(f"📌 **Current Stock:** {curr_qty} Rills | **Weight:** {curr_weight:.2f} kg")
         if curr_breakup:
             st.caption(f"**Current Stock Breakup (kg):** {curr_breakup}")
 
@@ -1479,7 +1492,7 @@ with tab_entry:
         col_m4, col_m5, col_m6 = st.columns([1.5, 1.5, 3])
         with col_m4:
             qty_change = st.number_input(
-                "Qty (Rolls) *", 
+                "Qty (Rills) *", 
                 min_value=0, 
                 step=1, 
                 key=f"q_mod_{key_suffix_rill}"
@@ -1498,9 +1511,9 @@ with tab_entry:
         final_qty = curr_qty + qty_change if action_type == "Purchased (+)" else curr_qty - qty_change
         final_weight = curr_weight + weight_change if action_type == "Purchased (+)" else curr_weight - weight_change
 
-        if st.button("Submit Transaction", type="primary", key="btn_update_rill"):
+        if st.button("Submit Record", type="primary", key="btn_update_rill"):
             if action_type == "Used (-)" and qty_change > curr_qty:
-                st.warning(f"Cannot subtract {qty_change} rolls! Available stock is only {curr_qty} rolls.")
+                st.warning(f"Cannot subtract {qty_change} rills! Available stock is only {curr_qty} rills.")
             elif action_type == "Used (-)" and weight_change > curr_weight:
                 st.warning(f"Cannot subtract {weight_change:.2f} kg! Available weight is only {curr_weight:.2f} kg.")
             elif qty_change == 0 and weight_change == 0:
@@ -1615,13 +1628,13 @@ with tab_entry:
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------
-# Tab 2: Transaction History Log View
+# Tab 2: Record History Log View
 # ------------------------------------------------------
 with tab_history:
-    st.markdown("### 📜 Date-Wise Transaction History Log")
+    st.markdown("### 📜 Date-Wise Record History Log")
 
     if history_df.empty:
-        st.info("No transaction history available yet.")
+        st.info("No record history available yet.")
     else:
         view_mode = st.radio(
             "View Mode:", 
@@ -1704,7 +1717,7 @@ with tab_history:
         st.dataframe(
             display_df,
             column_config={
-                "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
+                "Quantity": st.column_config.NumberColumn("Quantity (Rills)", format="%d"),
                 "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f"),
                 "Breakup_Weight": st.column_config.TextColumn("Breakup Weight Entry")
             },
