@@ -424,8 +424,8 @@ COLUMNS3 = [
 
 COMPANY_OPTIONS = [
     "Select",
-    "Kamal’s cake (Dhulagori)",
-    "Kamal’s Ice Cream (Dhulagori)",
+    "Kamal’s cake (SOUTH SANKRAIL)",
+    "Kamal’s Ice Cream (HOWRAH FOOD PARK)",
     "Kamals ORL O (Dhulagori)",
     "Kamals Ice Cream (Shaoraphuli, ”Adila”)",
     "Agarwal Food Product (Sankrail)",
