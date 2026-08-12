@@ -1628,13 +1628,13 @@ with tab_entry:
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------
-# Tab 2: Record History Log View
+# Tab 2: Transaction History Log View
 # ------------------------------------------------------
 with tab_history:
-    st.markdown("### 📜 Date-Wise Record History Log")
+    st.markdown("### 📜 Date-Wise Transaction History Log")
 
     if history_df.empty:
-        st.info("No record history available yet.")
+        st.info("No transaction history available yet.")
     else:
         view_mode = st.radio(
             "View Mode:", 
@@ -1646,7 +1646,6 @@ with tab_history:
         filtered_df = history_df.copy()
 
         # Data Cleaning & Type Normalization
-        filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
@@ -1657,19 +1656,24 @@ with tab_history:
         filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).replace("nan", "").str.strip()
         filtered_df["Remark"] = filtered_df["Remark"].astype(str).replace("nan", "").str.strip()
 
-        # Flexible date parsing (Handles DD/MM/YYYY, D/M/YYYY, YYYY-MM-DD, etc.)
-        parsed_dates = pd.to_datetime(
-            filtered_df["Date"], 
-            dayfirst=True, 
-            format="mixed", 
-            errors="coerce"
-        )
-        temp_date_series = parsed_dates.dt.date
+        # Robust Date Parsing Function
+        def parse_to_date_obj(val):
+            if pd.isna(val) or val is None or str(val).strip() in ["", "nan", "None"]:
+                return None
+            if isinstance(val, date):
+                return val
+            if isinstance(val, pd.Timestamp):
+                return val.date()
+            s = str(val).replace("'", "").strip()
+            dt = pd.to_datetime(s, dayfirst=True, errors="coerce")
+            return dt.date() if pd.notna(dt) else None
 
-        # Calculate bounds safely
-        valid_dates = temp_date_series.dropna()
-        min_date = valid_dates.min() if not valid_dates.empty else date.today()
-        max_date = valid_dates.max() if not valid_dates.empty else date.today()
+        # Parse every row into a python date object
+        temp_dates = filtered_df["Date"].apply(parse_to_date_obj)
+        valid_dates = [d for d in temp_dates if d is not None]
+
+        min_d = min(valid_dates) if valid_dates else date.today()
+        max_d = max(valid_dates) if valid_dates else date.today()
 
         # Filter UI Controls
         col_h1, col_h2, col_h3, col_h4 = st.columns(4)
@@ -1677,7 +1681,7 @@ with tab_history:
         with col_h1:
             date_range = st.date_input(
                 "Filter Date Range",
-                value=(min_date, max_date),
+                value=(min_d, max_d),
                 key=f"rill_hist_filter_date_{key_suffix_rill}"
             )
         with col_h2:
@@ -1699,15 +1703,21 @@ with tab_history:
                 key=f"rill_hist_search_{key_suffix_rill}"
             )
 
-        # Apply Date Range Filtering
-        if isinstance(date_range, (tuple, list)):
-            if len(date_range) == 2:
-                start_d, end_d = date_range
-                filtered_df = filtered_df[(temp_date_series >= start_d) & (temp_date_series <= end_d)]
-            elif len(date_range) == 1:
-                filtered_df = filtered_df[temp_date_series >= date_range[0]]
-        elif date_range:
-            filtered_df = filtered_df[temp_date_series == date_range]
+        # Apply Date Range Filtering safely
+        if date_range:
+            if isinstance(date_range, (tuple, list)):
+                if len(date_range) == 2:
+                    start_d, end_d = date_range
+                    mask = temp_dates.apply(lambda d: d is not None and start_d <= d <= end_d)
+                    filtered_df = filtered_df[mask]
+                elif len(date_range) == 1:
+                    start_d = date_range[0]
+                    mask = temp_dates.apply(lambda d: d is not None and d >= start_d)
+                    filtered_df = filtered_df[mask]
+            else:
+                selected_d = date_range
+                mask = temp_dates.apply(lambda d: d is not None and d == selected_d)
+                filtered_df = filtered_df[mask]
 
         # Apply Other Filters
         if filter_type:
@@ -1721,34 +1731,8 @@ with tab_history:
                 filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
-        if "Grouped" in view_mode:
-            def combine_breakups(series):
-                all_weights = []
-                for entry in series:
-                    entry_str = str(entry).strip()
-                    if entry_str and entry_str != "nan":
-                        items = [p.strip() for p in entry_str.split(",") if p.strip()]
-                        all_weights.extend(items)
-                return ", ".join(all_weights)
-
-            def combine_remarks(series):
-                clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                return " | ".join(dict.fromkeys(clean_remarks))
-
-            display_df = (
-                filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
-                .agg({
-                    "Quantity": "sum",
-                    "Weight": "sum",
-                    "Breakup_Weight": combine_breakups,
-                    "Remark": combine_remarks
-                })
-            )
-        else:
-            display_df = filtered_df
-
         st.dataframe(
-            display_df,
+            filtered_df,
             column_config={
                 "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
                 "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f"),
