@@ -1645,7 +1645,7 @@ with tab_history:
 
         filtered_df = history_df.copy()
 
-        # Data Cleaning & Type Normalization (Your original logic)
+        # Data Cleaning & Type Normalization
         filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
@@ -1657,10 +1657,19 @@ with tab_history:
         filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).replace("nan", "").str.strip()
         filtered_df["Remark"] = filtered_df["Remark"].astype(str).replace("nan", "").str.strip()
 
-        # Calculate bounds for date range picker
-        parsed_dates = pd.to_datetime(filtered_df["Date"], format="%d/%m/%Y", errors="coerce").dropna()
-        min_date = parsed_dates.min().date() if not parsed_dates.empty else date.today()
-        max_date = parsed_dates.max().date() if not parsed_dates.empty else date.today()
+        # Flexible date parsing (Handles DD/MM/YYYY, D/M/YYYY, YYYY-MM-DD, etc.)
+        parsed_dates = pd.to_datetime(
+            filtered_df["Date"], 
+            dayfirst=True, 
+            format="mixed", 
+            errors="coerce"
+        )
+        temp_date_series = parsed_dates.dt.date
+
+        # Calculate bounds safely
+        valid_dates = temp_date_series.dropna()
+        min_date = valid_dates.min() if not valid_dates.empty else date.today()
+        max_date = valid_dates.max() if not valid_dates.empty else date.today()
 
         # Filter UI Controls
         col_h1, col_h2, col_h3, col_h4 = st.columns(4)
@@ -1691,13 +1700,14 @@ with tab_history:
             )
 
         # Apply Date Range Filtering
-        if isinstance(date_range, tuple) and len(date_range) == 2:
-            start_d, end_d = date_range
-            temp_date_series = pd.to_datetime(filtered_df["Date"], format="%d/%m/%Y", errors="coerce").dt.date
-            filtered_df = filtered_df[(temp_date_series >= start_d) & (temp_date_series <= end_d)]
-        elif isinstance(date_range, tuple) and len(date_range) == 1:
-            temp_date_series = pd.to_datetime(filtered_df["Date"], format="%d/%m/%Y", errors="coerce").dt.date
-            filtered_df = filtered_df[temp_date_series == date_range[0]]
+        if isinstance(date_range, (tuple, list)):
+            if len(date_range) == 2:
+                start_d, end_d = date_range
+                filtered_df = filtered_df[(temp_date_series >= start_d) & (temp_date_series <= end_d)]
+            elif len(date_range) == 1:
+                filtered_df = filtered_df[temp_date_series >= date_range[0]]
+        elif date_range:
+            filtered_df = filtered_df[temp_date_series == date_range]
 
         # Apply Other Filters
         if filter_type:
