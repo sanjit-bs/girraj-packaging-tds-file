@@ -1628,13 +1628,13 @@ with tab_entry:
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------
-# Tab 2: Record History Log View
+# Tab 2: Transaction History Log View
 # ------------------------------------------------------
 with tab_history:
-    st.markdown("### 📜 Date-Wise Record History Log")
+    st.markdown("### 📜 Date-Wise Transaction History Log")
 
     if history_df.empty:
-        st.info("No record history available yet.")
+        st.info("No transaction history available yet.")
     else:
         view_mode = st.radio(
             "View Mode:", 
@@ -1666,6 +1666,7 @@ with tab_history:
         filtered_df = history_df.copy()
 
         # Data Cleaning & Type Normalization
+        filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
@@ -1675,13 +1676,6 @@ with tab_history:
         filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0).astype(float)
         filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).replace("nan", "").str.strip()
         filtered_df["Remark"] = filtered_df["Remark"].astype(str).replace("nan", "").str.strip()
-
-        # Convert Date to datetime for proper sorting
-        filtered_df["Date_Obj"] = pd.to_datetime(
-            filtered_df["Date"].astype(str).str.replace("'", "").str.strip(), 
-            format="%d/%m/%Y", 
-            errors="coerce"
-        )
 
         if filter_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(filter_type)]
@@ -1708,9 +1702,8 @@ with tab_history:
                 clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
                 return " | ".join(dict.fromkeys(clean_remarks))
 
-            # Group by real Date object
             display_df = (
-                filtered_df.groupby(["Date_Obj", "Type", "Size", "GSM", "BF"], as_index=False)
+                filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
                 .agg({
                     "Quantity": "sum",
                     "Weight": "sum",
@@ -1720,16 +1713,6 @@ with tab_history:
             )
         else:
             display_df = filtered_df
-
-        # Sort chronologically (Newest first)
-        display_df = display_df.sort_values(by="Date_Obj", ascending=False)
-
-        # Format Date object back to string for UI display
-        display_df["Date"] = display_df["Date_Obj"].dt.strftime("%d/%m/%Y")
-        
-        # Select and order final output columns
-        output_cols = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
-        display_df = display_df[output_cols]
 
         st.dataframe(
             display_df,
