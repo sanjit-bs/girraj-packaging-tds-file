@@ -1636,37 +1636,16 @@ with tab_history:
     if history_df.empty:
         st.info("No record history available yet.")
     else:
-        view_mode = st.radio(
-            "View Mode:", 
-            options=["📊 Detailed History Log"], 
-            horizontal=True,
-            key=f"rill_hist_view_mode_{key_suffix_rill}"
-        )
-
-        col_h1, col_h2, col_h3 = st.columns(3)
-        with col_h1:
-            filter_type = st.multiselect(
-                "Filter Action Type", 
-                options=["Purchased", "Used"], 
-                default=["Purchased", "Used"],
-                key=f"rill_hist_filter_type_{key_suffix_rill}"
-            )
-        with col_h2:
-            filter_size = st.multiselect(
-                "Filter Size", 
-                options=sorted(history_df["Size"].astype(str).str.strip().unique()),
-                key=f"rill_hist_filter_size_{key_suffix_rill}"
-            )
-        with col_h3:
-            search_text = st.text_input(
-                "Search Remarks/Breakups/Specs",
-                key=f"rill_hist_search_{key_suffix_rill}"
-            )
-
         filtered_df = history_df.copy()
 
+        # Parse dates to datetime objects for date range filtering & chronological sorting
+        filtered_df["Date_Obj"] = pd.to_datetime(
+            filtered_df["Date"].astype(str).str.replace("'", "").str.strip(), 
+            format="%d/%m/%Y", 
+            errors="coerce"
+        )
+
         # Data Cleaning & Type Normalization
-        filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Size"] = filtered_df["Size"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
@@ -1676,6 +1655,49 @@ with tab_history:
         filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0).astype(float)
         filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).replace("nan", "").str.strip()
         filtered_df["Remark"] = filtered_df["Remark"].astype(str).replace("nan", "").str.strip()
+
+        # Calculate default bounds for the date picker
+        valid_dates = filtered_df["Date_Obj"].dropna()
+        min_date = valid_dates.min().date() if not valid_dates.empty else date.today()
+        max_date = valid_dates.max().date() if not valid_dates.empty else date.today()
+
+        # --- Filter Controls ---
+        col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+        
+        with col_h1:
+            date_range = st.date_input(
+                "Filter Date Range",
+                value=(min_date, max_date),
+                key=f"rill_hist_filter_date_{key_suffix_rill}"
+            )
+        with col_h2:
+            filter_type = st.multiselect(
+                "Filter Action Type", 
+                options=["Purchased", "Used"], 
+                default=["Purchased", "Used"],
+                key=f"rill_hist_filter_type_{key_suffix_rill}"
+            )
+        with col_h3:
+            filter_size = st.multiselect(
+                "Filter Size", 
+                options=sorted(filtered_df["Size"].unique()),
+                key=f"rill_hist_filter_size_{key_suffix_rill}"
+            )
+        with col_h4:
+            search_text = st.text_input(
+                "Search Remarks/Breakups",
+                key=f"rill_hist_search_{key_suffix_rill}"
+            )
+
+        # --- Apply Filtering Logic ---
+        if isinstance(date_range, tuple) and len(date_range) == 2:
+            start_d, end_d = date_range
+            filtered_df = filtered_df[
+                (filtered_df["Date_Obj"].dt.date >= start_d) & 
+                (filtered_df["Date_Obj"].dt.date <= end_d)
+            ]
+        elif isinstance(date_range, tuple) and len(date_range) == 1:
+            filtered_df = filtered_df[filtered_df["Date_Obj"].dt.date == date_range[0]]
 
         if filter_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(filter_type)]
@@ -1688,34 +1710,16 @@ with tab_history:
                 filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
-        if "Grouped" in view_mode:
-            def combine_breakups(series):
-                all_weights = []
-                for entry in series:
-                    entry_str = str(entry).strip()
-                    if entry_str and entry_str != "nan":
-                        items = [p.strip() for p in entry_str.split(",") if p.strip()]
-                        all_weights.extend(items)
-                return ", ".join(all_weights)
+        # Sort chronologically (Newest first)
+        filtered_df = filtered_df.sort_values(by="Date_Obj", ascending=False)
 
-            def combine_remarks(series):
-                clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                return " | ".join(dict.fromkeys(clean_remarks))
+        # Format Date back to string for clean display
+        filtered_df["Date"] = filtered_df["Date_Obj"].dt.strftime("%d/%m/%Y")
 
-            display_df = (
-                filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
-                .agg({
-                    "Quantity": "sum",
-                    "Weight": "sum",
-                    "Breakup_Weight": combine_breakups,
-                    "Remark": combine_remarks
-                })
-            )
-        else:
-            display_df = filtered_df
-
+        display_cols = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
+        
         st.dataframe(
-            display_df,
+            filtered_df[display_cols],
             column_config={
                 "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
                 "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f"),
