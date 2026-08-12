@@ -1243,19 +1243,6 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPo
 COLUMNS_MASTER = ["Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Size", "GSM", "BF", "Quantity", "Weight", "Breakup_Weight", "Remark"]
 
-# --- Standalone Converter Tool ---
-with st.expander("📐 Quick CM to Inches Converter"):
-    cm_input = st.number_input(
-        "Enter Size in CM", 
-        min_value=0.0, 
-        step=0.1, 
-        format="%.2f", 
-        key="standalone_cm_converter"
-    )
-    if cm_input > 0:
-        inch_result = round(cm_input / 2.54, 2)
-        st.success(f"**{cm_input:.2f} cm** = **{inch_result:.2f} Inches**")
-
 # ------------------------------------------------------
 # Helpers: Breakup Weight Processing & Callbacks
 # ------------------------------------------------------
@@ -1408,6 +1395,19 @@ rill_df, history_df = fetch_all_data()
 
 st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger & Audit Log")
+
+# --- Standalone Converter Tool ---
+with st.expander("📐 Quick CM to Inches Converter"):
+    cm_input = st.number_input(
+        "Enter Size in CM", 
+        min_value=0.0, 
+        step=0.1, 
+        format="%.2f", 
+        key="standalone_cm_converter"
+    )
+    if cm_input > 0:
+        inch_result = round(cm_input / 2.54, 2)
+        st.success(f"**{cm_input:.2f} cm** = **{inch_result:.2f} Inches**")
 
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
