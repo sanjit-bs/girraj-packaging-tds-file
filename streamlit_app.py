@@ -1628,13 +1628,13 @@ with tab_entry:
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 # ------------------------------------------------------
-# Tab 2: Transaction History Log View
+# Tab 2: Record History Log View
 # ------------------------------------------------------
 with tab_history:
-    st.markdown("### 📜 Date-Wise Transaction History Log")
+    st.markdown("### 📜 Date-Wise Record History Log")
 
     if history_df.empty:
-        st.info("No transaction history available yet.")
+        st.info("No record history available yet.")
     else:
         view_mode = st.radio(
             "View Mode:", 
