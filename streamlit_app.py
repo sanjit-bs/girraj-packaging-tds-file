@@ -1343,7 +1343,7 @@ def fetch_all_data():
         response = requests.get(
             f"{APPS_SCRIPT_URL}?action=read_all", 
             allow_redirects=True, 
-            timeout=10
+            timeout=30
         )
         
         if "text/html" in response.headers.get("Content-Type", ""):
