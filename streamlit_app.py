@@ -1638,7 +1638,7 @@ with tab_history:
     else:
         view_mode = st.radio(
             "View Mode:", 
-            options=["📊 Grouped & Summed (Daily Totals)", "📄 Detailed Raw Log"], 
+            options=["📊 Detailed History Log"], 
             horizontal=True,
             key=f"rill_hist_view_mode_{key_suffix_rill}"
         )
