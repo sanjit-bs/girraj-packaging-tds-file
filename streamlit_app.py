@@ -437,7 +437,7 @@ COMPANY_OPTIONS = [
 VEHICLE_MASTER = {
     "Select": {"driver": "", "owner": ""},
     "WB23C6784": {"driver": "Mangal", "owner": "D Biswas"},
-    "WB35L6773": {"driver": "Raja", "owner": "D Biswas"},
+    "WB25L6773": {"driver": "Raja", "owner": "D Biswas"},
     "WB25G3488": {"driver": "Babu", "owner": "D Biswas"},
     "WB25W1226": {"driver": "Sanjay", "owner": "D Biswas"},
     "WB25P9492": {"driver": "Badal", "owner": "D Biswas"},
