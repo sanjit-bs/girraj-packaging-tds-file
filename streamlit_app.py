@@ -1768,12 +1768,12 @@ with tab_history:
 # ------------------------------------------------------
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFiTY2W44BRhicfK7nTxEk5aOVQjNMIcq8wj3fUct_kMfdzkfxcsUpda0isAt6b_mY/exec"
 
-COLUMNS_MASTER = ["Height", "Width", "GSM", "Grus", "Pcs", "Remark"]
+COLUMNS_MASTER = ["Width", "Length", "GSM", "Grus", "Pcs", "Remark"]
 COLUMNS_HISTORY = [
     "Date",
     "Type",
-    "Height",
     "Width",
+    "Length",
     "GSM",
     "Grus",
     "Pcs",
@@ -1880,37 +1880,6 @@ sheet_df, sheet_history_df = fetch_all_sheet_data()
 st.markdown("---")
 st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
 
-# --- Standalone Converter Tool ---
-with st.expander("📐 Quick CM to Inches Converter"):
-    col_cm1, col_cm2 = st.columns(2)
-
-    with col_cm1:
-        h_cm = st.number_input(
-            "Height (CM)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            key="standalone_h_cm_converter",
-        )
-
-    with col_cm2:
-        w_cm = st.number_input(
-            "Width (CM)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            key="standalone_w_cm_converter",
-        )
-
-    if h_cm > 0 or w_cm > 0:
-        h_inch = round(h_cm / 2.54, 2)
-        w_inch = round(w_cm / 2.54, 2)
-
-        st.success(
-            f"**Converted Dimensions:** {h_inch:.2f}″ (H) × {w_inch:.2f}″ (W)\n\n"
-            f"*Original:* {h_cm:.2f} cm × {w_cm:.2f} cm"
-        )
-
 if "sheet_form_key" not in st.session_state:
     st.session_state.sheet_form_key = 0
 key_suffix_sheet = st.session_state.sheet_form_key
@@ -1920,13 +1889,13 @@ tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 with tab_entry:
     st.markdown("##### 🔍 Select Specification")
 
-    unique_heights = (
-        sorted(list(set(sheet_df["Height"].astype(str).str.strip().unique())))
+    unique_widths = (
+        sorted(list(set(sheet_df["Width"].astype(str).str.strip().unique())))
         if not sheet_df.empty
         else []
     )
-    unique_widths = (
-        sorted(list(set(sheet_df["Width"].astype(str).str.strip().unique())))
+    unique_lengths = (
+        sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique())))
         if not sheet_df.empty
         else []
     )
@@ -1938,16 +1907,16 @@ with tab_entry:
 
     col_s1, col_s2, col_s3 = st.columns(3)
     with col_s1:
-        selected_height = st.selectbox(
-            "Height *",
-            options=["Select Height..."] + unique_heights + ["➕ New Height"],
-            key=f"sheet_h_{key_suffix_sheet}",
-        )
-    with col_s2:
         selected_width = st.selectbox(
             "Width *",
             options=["Select Width..."] + unique_widths + ["➕ New Width"],
             key=f"sheet_w_{key_suffix_sheet}",
+        )
+    with col_s2:
+        selected_length = st.selectbox(
+            "Length *",
+            options=["Select Length..."] + unique_lengths + ["➕ New Length"],
+            key=f"sheet_l_{key_suffix_sheet}",
         )
     with col_s3:
         selected_gsm = st.selectbox(
@@ -1957,14 +1926,14 @@ with tab_entry:
         )
 
     has_unselected = (
-        selected_height == "Select Height..."
-        or selected_width == "Select Width..."
+        selected_width == "Select Width..."
+        or selected_length == "Select Length..."
         or selected_gsm == "Select GSM..."
     )
 
     explicit_new_requested = (
-        selected_height == "➕ New Height"
-        or selected_width == "➕ New Width"
+        selected_width == "➕ New Width"
+        or selected_length == "➕ New Length"
         or selected_gsm == "➕ New GSM"
     )
 
@@ -1972,12 +1941,12 @@ with tab_entry:
     if not has_unselected and not explicit_new_requested and not sheet_df.empty:
         matched_rows = sheet_df[
             (
-                sheet_df["Height"].astype(str).str.strip().str.lower()
-                == selected_height.lower()
-            )
-            & (
                 sheet_df["Width"].astype(str).str.strip().str.lower()
                 == selected_width.lower()
+            )
+            & (
+                sheet_df["Length"].astype(str).str.strip().str.lower()
+                == selected_length.lower()
             )
             & (
                 sheet_df["GSM"].astype(str).str.strip().str.lower()
@@ -1988,7 +1957,7 @@ with tab_entry:
     # --- UI ROUTING ---
     if has_unselected:
         st.info(
-            "👆 Please select Height, Width, and GSM from the dropdowns above to proceed."
+            "👆 Please select Width, Length, and GSM from the dropdowns above to proceed."
         )
 
     # Mode A: Existing Item Found -> Modify / Record Usage
@@ -2077,8 +2046,8 @@ with tab_entry:
                         if action_type == "Purchased (+)"
                         else "Used"
                     ),
-                    "height": str(selected_height).strip(),
                     "width": str(selected_width).strip(),
+                    "length": str(selected_length).strip(),
                     "gsm": str(selected_gsm).strip(),
                     "grus_change": float(grus_change),
                     "pcs_change": int(pcs_change),
@@ -2098,20 +2067,20 @@ with tab_entry:
 
         st.markdown("##### 📝 Create New Item Specification")
 
-        default_h = "" if selected_height == "➕ New Height" else selected_height
         default_w = "" if selected_width == "➕ New Width" else selected_width
+        default_l = "" if selected_length == "➕ New Length" else selected_length
         default_gsm = "" if selected_gsm == "➕ New GSM" else selected_gsm
 
         col_f1, col_f2, col_f3 = st.columns(3)
         with col_f1:
-            final_height = st.text_input(
-                "Height *",
-                value=default_h,
-                key=f"sheet_in_h_{key_suffix_sheet}",
+            final_width = st.text_input(
+                "Width *",
+                value=default_w,
+                key=f"sheet_in_w_{key_suffix_sheet}",
             )
         with col_f2:
-            final_width = st.text_input(
-                "Width *", value=default_w, key=f"sheet_in_w_{key_suffix_sheet}"
+            final_length = st.text_input(
+                "Length *", value=default_l, key=f"sheet_in_l_{key_suffix_sheet}"
             )
         with col_f3:
             final_gsm = st.text_input(
@@ -2157,21 +2126,21 @@ with tab_entry:
         if st.button(
             "Save New Sheet Item", type="primary", key="btn_add_new_sheet"
         ):
-            clean_h, clean_w, clean_gsm = (
-                final_height.strip(),
+            clean_w, clean_l, clean_gsm = (
                 final_width.strip(),
+                final_length.strip(),
                 final_gsm.strip(),
             )
 
-            if not clean_h or not clean_w or not clean_gsm:
-                st.warning("Please fill in Height, Width, and GSM.")
+            if not clean_w or not clean_l or not clean_gsm:
+                st.warning("Please fill in Width, Length, and GSM.")
             else:
                 payload = {
                     "action": "add_new",
                     "date": txn_date.strftime("%d/%m/%Y"),
                     "type": "Purchased",
-                    "height": clean_h,
                     "width": clean_w,
+                    "length": clean_l,
                     "gsm": clean_gsm,
                     "grus": float(new_initial_grus),
                     "pcs": int(new_initial_pcs),
@@ -2221,8 +2190,8 @@ with tab_history:
             filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         )
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
-        filtered_df["Height"] = filtered_df["Height"].astype(str).str.strip()
         filtered_df["Width"] = filtered_df["Width"].astype(str).str.strip()
+        filtered_df["Length"] = filtered_df["Length"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
 
         filtered_df["Grus"] = (
@@ -2301,8 +2270,8 @@ with tab_history:
         if search_text:
             filtered_df = filtered_df[
                 filtered_df["Remark"].str.contains(search_text, case=False)
-                | filtered_df["Height"].str.contains(search_text, case=False)
                 | filtered_df["Width"].str.contains(search_text, case=False)
+                | filtered_df["Length"].str.contains(search_text, case=False)
             ]
 
         st.dataframe(
