@@ -1886,7 +1886,7 @@ with st.expander("📐 Quick CM to Inches Converter"):
 
     with col_cm1:
         h_cm = st.number_input(
-            "Height (CM)",
+            "Width (CM)",
             min_value=0.0,
             step=0.1,
             format="%.2f",
@@ -1895,7 +1895,7 @@ with st.expander("📐 Quick CM to Inches Converter"):
 
     with col_cm2:
         w_cm = st.number_input(
-            "Width (CM)",
+            "Length (CM)",
             min_value=0.0,
             step=0.1,
             format="%.2f",
@@ -1907,7 +1907,7 @@ with st.expander("📐 Quick CM to Inches Converter"):
         w_inch = round(w_cm / 2.54, 2)
 
         st.success(
-            f"**Converted Dimensions:** {h_inch:.2f}″ (H) × {w_inch:.2f}″ (W)\n\n"
+            f"**Converted Dimensions:** {h_inch:.2f}″ (W) × {w_inch:.2f}″ (L)\n\n"
             f"*Original:* {h_cm:.2f} cm × {w_cm:.2f} cm"
         )
 
