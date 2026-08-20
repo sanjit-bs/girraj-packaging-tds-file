@@ -1784,18 +1784,18 @@ COLUMNS_HISTORY = [
 # ------------------------------------------------------
 # Helpers: Automatic Pcs Calculation Callbacks
 # ------------------------------------------------------
-def sync_mod_gross():
-    """Callback to calculate Pcs from Gross for Mode A (Gross * 144)."""
+def sync_mod_grus():
+    """Callback to calculate Pcs from Grus for Mode A (Grus * 144)."""
     key_suf = st.session_state.get("sheet_form_key", 0)
-    gross_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
-    st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(gross_val * 144))
+    grus_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
+    st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(grus_val * 144))
 
 
-def sync_new_gross():
-    """Callback to calculate Pcs from Gross for Mode B (Gross * 144)."""
+def sync_new_grus():
+    """Callback to calculate Pcs from Grus for Mode B (Grus * 144)."""
     key_suf = st.session_state.get("sheet_form_key", 0)
-    gross_val = st.session_state.get(f"sheet_g_new_{key_suf}", 0.0)
-    st.session_state[f"sheet_pcs_new_{key_suf}"] = int(round(gross_val * 144))
+    grus_val = st.session_state.get(f"sheet_g_new_{key_suf}", 0.0)
+    st.session_state[f"sheet_pcs_new_{key_suf}"] = int(round(grus_val * 144))
 
 
 # ------------------------------------------------------
@@ -1826,11 +1826,11 @@ def fetch_all_sheet_data():
         # Ensure mandatory columns exist
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
-                master_df[col] = 0 if col in ["Gross", "Pcs"] else ""
+                master_df[col] = 0 if col in ["Grus", "Pcs"] else ""
 
         for col in COLUMNS_HISTORY:
             if col not in history_df.columns:
-                history_df[col] = 0 if col in ["Gross", "Pcs"] else ""
+                history_df[col] = 0 if col in ["Grus", "Pcs"] else ""
 
         return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
 
@@ -1879,37 +1879,6 @@ sheet_df, sheet_history_df = fetch_all_sheet_data()
 
 st.markdown("---")
 st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
-
-# --- Standalone Converter Tool ---
-with st.expander("📐 Quick CM to Inches Converter"):
-    col_cm1, col_cm2 = st.columns(2)
-
-    with col_cm1:
-        h_cm = st.number_input(
-            "Height (CM)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            key="standalone_h_cm_converter",
-        )
-
-    with col_cm2:
-        w_cm = st.number_input(
-            "Width (CM)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            key="standalone_w_cm_converter",
-        )
-
-    if h_cm > 0 or w_cm > 0:
-        h_inch = round(h_cm / 2.54, 2)
-        w_inch = round(w_cm / 2.54, 2)
-
-        st.success(
-            f"**Converted Dimensions:** {h_inch:.2f}″ (H) × {w_inch:.2f}″ (W)\n\n"
-            f"*Original:* {h_cm:.2f} cm × {w_cm:.2f} cm"
-        )
 
 if "sheet_form_key" not in st.session_state:
     st.session_state.sheet_form_key = 0
@@ -1995,16 +1964,16 @@ with tab_entry:
     elif not matched_rows.empty:
         matched_row = matched_rows.iloc[0]
 
-        curr_gross = float(
-            pd.to_numeric(matched_row["Gross"], errors="coerce") or 0.0
+        curr_grus = float(
+            pd.to_numeric(matched_row["Grus"], errors="coerce") or 0.0
         )
         curr_pcs = int(
             pd.to_numeric(matched_row["Pcs"], errors="coerce")
-            or round(curr_gross * 144)
+            or round(curr_grus * 144)
         )
 
         st.success(
-            f"📌 **Current Stock:** {curr_gross:.2f} Gross | **Total Pcs:** {curr_pcs} Pcs"
+            f"📌 **Current Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs"
         )
 
         col_m1, col_m2 = st.columns([1.5, 2.5])
@@ -2022,7 +1991,7 @@ with tab_entry:
                 key=f"sheet_act_{key_suffix_sheet}",
             )
 
-        # Initialize widget state for Gross & calculated Pcs
+        # Initialize widget state for Grus & calculated Pcs
         if f"sheet_g_mod_{key_suffix_sheet}" not in st.session_state:
             st.session_state[f"sheet_g_mod_{key_suffix_sheet}"] = 0.0
         if f"sheet_pcs_mod_{key_suffix_sheet}" not in st.session_state:
@@ -2030,17 +1999,17 @@ with tab_entry:
 
         col_m3, col_m4, col_m5 = st.columns([2, 2, 3])
         with col_m3:
-            gross_change = st.number_input(
-                "Gross Quantity *",
+            grus_change = st.number_input(
+                "Grus Quantity *",
                 min_value=0.0,
                 step=0.1,
                 format="%.2f",
                 key=f"sheet_g_mod_{key_suffix_sheet}",
-                on_change=sync_mod_gross,
+                on_change=sync_mod_grus,
             )
         with col_m4:
             pcs_change = st.number_input(
-                "Pcs (Gross × 144) *",
+                "Pcs (Grus × 144) *",
                 min_value=0,
                 step=144,
                 key=f"sheet_pcs_mod_{key_suffix_sheet}",
@@ -2050,10 +2019,10 @@ with tab_entry:
                 "Remark", value="", key=f"sheet_r_mod_{key_suffix_sheet}"
             )
 
-        final_gross = (
-            curr_gross + gross_change
+        final_grus = (
+            curr_grus + grus_change
             if action_type == "Purchased (+)"
-            else curr_gross - gross_change
+            else curr_grus - grus_change
         )
         final_pcs = (
             curr_pcs + pcs_change
@@ -2062,12 +2031,12 @@ with tab_entry:
         )
 
         if st.button("Submit Record", type="primary", key="btn_update_sheet"):
-            if action_type == "Used (-)" and gross_change > curr_gross:
+            if action_type == "Used (-)" and grus_change > curr_grus:
                 st.warning(
-                    f"Cannot subtract {gross_change:.2f} Gross! Available stock is only {curr_gross:.2f} Gross."
+                    f"Cannot subtract {grus_change:.2f} Grus! Available stock is only {curr_grus:.2f} Grus."
                 )
-            elif gross_change == 0 and pcs_change == 0:
-                st.warning("Please enter a non-zero Gross or Pcs value.")
+            elif grus_change == 0 and pcs_change == 0:
+                st.warning("Please enter a non-zero Grus or Pcs value.")
             else:
                 payload = {
                     "action": "update_stock",
@@ -2080,9 +2049,9 @@ with tab_entry:
                     "height": str(selected_height).strip(),
                     "width": str(selected_width).strip(),
                     "gsm": str(selected_gsm).strip(),
-                    "gross_change": float(gross_change),
+                    "grus_change": float(grus_change),
                     "pcs_change": int(pcs_change),
-                    "new_gross": float(final_gross),
+                    "new_grus": float(final_grus),
                     "new_pcs": int(final_pcs),
                     "remark": new_remark.strip(),
                 }
@@ -2134,13 +2103,13 @@ with tab_entry:
             st.session_state[f"sheet_pcs_new_{key_suffix_sheet}"] = 0
 
         with col_n2:
-            new_initial_gross = st.number_input(
-                "Initial Gross *",
+            new_initial_grus = st.number_input(
+                "Initial Grus *",
                 min_value=0.0,
                 step=0.1,
                 format="%.2f",
                 key=f"sheet_g_new_{key_suffix_sheet}",
-                on_change=sync_new_gross,
+                on_change=sync_new_grus,
             )
         with col_n3:
             new_initial_pcs = st.number_input(
@@ -2173,11 +2142,11 @@ with tab_entry:
                     "height": clean_h,
                     "width": clean_w,
                     "gsm": clean_gsm,
-                    "gross": float(new_initial_gross),
+                    "grus": float(new_initial_grus),
                     "pcs": int(new_initial_pcs),
-                    "gross_change": float(new_initial_gross),
+                    "grus_change": float(new_initial_grus),
                     "pcs_change": int(new_initial_pcs),
-                    "new_gross": float(new_initial_gross),
+                    "new_grus": float(new_initial_grus),
                     "new_pcs": int(new_initial_pcs),
                     "remark": f"Initial Stock - {new_remark_text.strip()}".strip(
                         " -"
@@ -2190,9 +2159,9 @@ with tab_entry:
     st.dataframe(
         sheet_df,
         column_config={
-            "Gross": st.column_config.NumberColumn("Gross", format="%.2f"),
+            "Grus": st.column_config.NumberColumn("Grus", format="%.2f"),
             "Pcs": st.column_config.NumberColumn(
-                "Pcs (Gross × 144)", format="%d"
+                "Pcs (Grus × 144)", format="%d"
             ),
         },
         use_container_width=True,
@@ -2211,6 +2180,11 @@ with tab_history:
     else:
         filtered_df = sheet_history_df.copy()
 
+        # Safely ensure all expected columns exist in history DataFrame
+        for col in COLUMNS_HISTORY:
+            if col not in filtered_df.columns:
+                filtered_df[col] = 0.0 if col in ["Grus", "Pcs"] else ""
+
         # Data Cleaning & Type Normalization
         filtered_df["Date"] = (
             filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
@@ -2220,8 +2194,8 @@ with tab_history:
         filtered_df["Width"] = filtered_df["Width"].astype(str).str.strip()
         filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
 
-        filtered_df["Gross"] = (
-            pd.to_numeric(filtered_df["Gross"], errors="coerce")
+        filtered_df["Grus"] = (
+            pd.to_numeric(filtered_df["Grus"], errors="coerce")
             .fillna(0.0)
             .astype(float)
         )
