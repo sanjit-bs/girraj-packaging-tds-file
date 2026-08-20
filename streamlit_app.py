@@ -1917,37 +1917,6 @@ sheet_df, sheet_history_df = fetch_all_sheet_data()
 st.markdown("---")
 st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
 
-# --- Standalone Converter Tool ---
-with st.expander("📐 Quick CM to Inches Converter"):
-    col_cm1, col_cm2 = st.columns(2)
-
-    with col_cm1:
-        h_cm = st.number_input(
-            "Width (CM)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            key="standalone_h_cm_converter",
-        )
-
-    with col_cm2:
-        w_cm = st.number_input(
-            "Length (CM)",
-            min_value=0.0,
-            step=0.1,
-            format="%.2f",
-            key="standalone_w_cm_converter",
-        )
-
-    if h_cm > 0 or w_cm > 0:
-        h_inch = round(h_cm / 2.54, 2)
-        w_inch = round(w_cm / 2.54, 2)
-
-        st.success(
-            f"**Converted Dimensions:** {h_inch:.2f}″ (W) × {w_inch:.2f}″ (L)\n\n"
-            f"*Original:* {h_cm:.2f} cm × {w_cm:.2f} cm"
-        )
-
 if "sheet_form_key" not in st.session_state:
     st.session_state.sheet_form_key = 0
 key_suffix_sheet = st.session_state.sheet_form_key
