@@ -2303,9 +2303,9 @@ with tab_history:
         st.dataframe(
             filtered_df[COLUMNS_HISTORY],
             column_config={
-                "Gross": st.column_config.NumberColumn("Gross", format="%.2f"),
+                "Grus": st.column_config.NumberColumn("Grus", format="%.2f"),
                 "Pcs": st.column_config.NumberColumn(
-                    "Pcs (Gross × 144)", format="%d"
+                    "Pcs (Grus × 144)", format="%d"
                 ),
             },
             use_container_width=True,
