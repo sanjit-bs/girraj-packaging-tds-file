@@ -1955,53 +1955,76 @@ key_suffix_sheet = st.session_state.sheet_form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 with tab_entry:
-    st.markdown("##### 🔍 Select Fixed Catalog Specification")
+    st.markdown("##### 🔍 Select Product (Auto-Fills Details)")
 
-    # Dropdowns are populated solely from the static/fixed sheet_stock sheet
+    # 1. Product Options
     unique_products = (
         sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique())))
         if not sheet_df.empty
         else []
     )
-    unique_widths = (
-        sorted(list(set(sheet_df["Width"].astype(str).str.strip().unique())))
-        if not sheet_df.empty
-        else []
-    )
-    unique_lengths = (
-        sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique())))
-        if not sheet_df.empty
-        else []
-    )
-    unique_gsms = (
-        sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique())))
-        if not sheet_df.empty
-        else []
-    )
 
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
+
     with col_s0:
         selected_product = st.selectbox(
             "Product *",
             options=["Select Product..."] + unique_products,
             key=f"sheet_p_{key_suffix_sheet}",
         )
+
+    # Filter catalog subset based on chosen Product
+    if selected_product != "Select Product...":
+        filtered_master = sheet_df[
+            sheet_df["Product"].astype(str).str.strip().str.lower()
+            == selected_product.strip().lower()
+        ]
+    else:
+        filtered_master = pd.DataFrame()
+
+    # 2. Dynamic Auto-Filtered Options
+    avail_widths = (
+        sorted(list(set(filtered_master["Width"].astype(str).str.strip().unique())))
+        if not filtered_master.empty
+        else []
+    )
+    avail_lengths = (
+        sorted(list(set(filtered_master["Length"].astype(str).str.strip().unique())))
+        if not filtered_master.empty
+        else []
+    )
+    avail_gsms = (
+        sorted(list(set(filtered_master["GSM"].astype(str).str.strip().unique())))
+        if not filtered_master.empty
+        else []
+    )
+
+    # 3. Auto-select index if only 1 matching option exists for product
+    width_idx = 1 if len(avail_widths) == 1 else 0
+    length_idx = 1 if len(avail_lengths) == 1 else 0
+    gsm_idx = 1 if len(avail_gsms) == 1 else 0
+
     with col_s1:
         selected_width = st.selectbox(
             "Width *",
-            options=["Select Width..."] + unique_widths,
+            options=["Select Width..."] + avail_widths,
+            index=width_idx,
             key=f"sheet_w_{key_suffix_sheet}",
         )
+
     with col_s2:
         selected_length = st.selectbox(
             "Length *",
-            options=["Select Length..."] + unique_lengths,
+            options=["Select Length..."] + avail_lengths,
+            index=length_idx,
             key=f"sheet_l_{key_suffix_sheet}",
         )
+
     with col_s3:
         selected_gsm = st.selectbox(
             "GSM *",
-            options=["Select GSM..."] + unique_gsms,
+            options=["Select GSM..."] + avail_gsms,
+            index=gsm_idx,
             key=f"sheet_g_{key_suffix_sheet}",
         )
 
@@ -2014,10 +2037,10 @@ with tab_entry:
 
     if has_unselected:
         st.info(
-            "👆 Please select Product, Width, Length, and GSM from the dropdowns above to proceed."
+            "👆 Select a Product to auto-fill details, or complete the remaining drop-downs."
         )
     else:
-        # Compute live balance dynamically from sheet_history
+        # Compute live stock balance dynamically from sheet_history
         curr_grus, curr_pcs = calculate_current_stock(
             sheet_history_df,
             selected_product,
@@ -2027,7 +2050,8 @@ with tab_entry:
         )
 
         st.success(
-            f"📌 **Current Dynamic Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs"
+            f"📌 **Selected Spec:** {selected_product} | {selected_width} × {selected_length} | {selected_gsm} GSM  \n"
+            f"⚡ **Current Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs"
         )
 
         col_m1, col_m2 = st.columns([1.5, 2.5])
@@ -2099,7 +2123,7 @@ with tab_entry:
 
                 send_sheet_update(payload)
 
-    st.markdown("### 📋 Static Catalog (`sheet_stock` - Read Only)")
+    st.markdown("### 📋 Static Catalog Reference (`sheet_stock`)")
     st.dataframe(
         sheet_df,
         use_container_width=True,
