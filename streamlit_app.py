@@ -53,7 +53,7 @@ def get_financial_year(payment_date):
         return f"{year}-{year + 1}"
     return f"{year - 1}-{year}"
 
-
+@st.cache_data(ttl=300)  # Caches data in memory for 5 minutes
 def load_data():
     records = sheet.get_all_records()
 
