@@ -1768,14 +1768,14 @@ with tab_history:
 # ------------------------------------------------------
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFiTY2W44BRhicfK7nTxEk5aOVQjNMIcq8wj3fUct_kMfdzkfxcsUpda0isAt6b_mY/exec"
 
-COLUMNS_MASTER = ["Height", "Width", "GSM", "Gross", "Pcs", "Remark"]
+COLUMNS_MASTER = ["Height", "Width", "GSM", "Grus", "Pcs", "Remark"]
 COLUMNS_HISTORY = [
     "Date",
     "Type",
     "Height",
     "Width",
     "GSM",
-    "Gross",
+    "Grus",
     "Pcs",
     "Remark",
 ]
