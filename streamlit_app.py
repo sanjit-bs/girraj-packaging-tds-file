@@ -1899,6 +1899,37 @@ sheet_df, sheet_history_df = fetch_all_sheet_data()
 st.markdown("---")
 st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
 
+# --- Standalone Converter Tool ---
+with st.expander("📐 Quick CM to Inches Converter"):
+    col_cm1, col_cm2 = st.columns(2)
+
+    with col_cm1:
+        h_cm = st.number_input(
+            "Width (CM)",
+            min_value=0.0,
+            step=0.1,
+            format="%.2f",
+            key="standalone_h_cm_converter",
+        )
+
+    with col_cm2:
+        w_cm = st.number_input(
+            "Length (CM)",
+            min_value=0.0,
+            step=0.1,
+            format="%.2f",
+            key="standalone_w_cm_converter",
+        )
+
+    if h_cm > 0 or w_cm > 0:
+        h_inch = round(h_cm / 2.54, 2)
+        w_inch = round(w_cm / 2.54, 2)
+
+        st.success(
+            f"**Converted Dimensions:** {h_inch:.2f}″ (W) × {w_inch:.2f}″ (L)\n\n"
+            f"*Original:* {h_cm:.2f} cm × {w_cm:.2f} cm"
+        )
+
 if "sheet_form_key" not in st.session_state:
     st.session_state.sheet_form_key = 0
 key_suffix = st.session_state.sheet_form_key
@@ -1915,6 +1946,7 @@ with tab_entry:
     )
 
     # Function triggered whenever Product dropdown changes
+    # Function triggered whenever Product dropdown changes
     def on_product_change():
         p_val = st.session_state.get(f"sheet_p_{key_suffix}")
         if p_val and p_val != "Select Product...":
@@ -1924,9 +1956,16 @@ with tab_entry:
             ]
             if not sub_df.empty:
                 first_row = sub_df.iloc[0]
-                st.session_state["auto_w"] = str(first_row["Width"]).strip()
-                st.session_state["auto_l"] = str(first_row["Length"]).strip()
-                st.session_state["auto_g"] = str(first_row["GSM"]).strip()
+                
+                # DIRECTLY update the widget's session_state keys
+                st.session_state[f"sheet_w_{key_suffix}"] = str(first_row["Width"]).strip()
+                st.session_state[f"sheet_l_{key_suffix}"] = str(first_row["Length"]).strip()
+                st.session_state[f"sheet_g_{key_suffix}"] = str(first_row["GSM"]).strip()
+        else:
+            # Reset if user unselects the product
+            st.session_state[f"sheet_w_{key_suffix}"] = "Select Width..."
+            st.session_state[f"sheet_l_{key_suffix}"] = "Select Length..."
+            st.session_state[f"sheet_g_{key_suffix}"] = "Select GSM..."
 
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
@@ -1956,32 +1995,11 @@ with tab_entry:
     else:
         avail_widths, avail_lengths, avail_gsms = [], [], []
 
-    # Get index positions for state retention
-    default_w = st.session_state.get("auto_w", "")
-    default_l = st.session_state.get("auto_l", "")
-    default_g = st.session_state.get("auto_g", "")
-
-    idx_w = (
-        avail_widths.index(default_w) + 1
-        if default_w in avail_widths
-        else (1 if len(avail_widths) == 1 else 0)
-    )
-    idx_l = (
-        avail_lengths.index(default_l) + 1
-        if default_l in avail_lengths
-        else (1 if len(avail_lengths) == 1 else 0)
-    )
-    idx_g = (
-        avail_gsms.index(default_g) + 1
-        if default_g in avail_gsms
-        else (1 if len(avail_gsms) == 1 else 0)
-    )
-
+    # Streamlit will automatically select the values because we updated the keys in the callback!
     with col_s1:
         selected_width = st.selectbox(
             "Width *",
             options=["Select Width..."] + avail_widths,
-            index=idx_w,
             key=f"sheet_w_{key_suffix}",
         )
 
@@ -1989,7 +2007,6 @@ with tab_entry:
         selected_length = st.selectbox(
             "Length *",
             options=["Select Length..."] + avail_lengths,
-            index=idx_l,
             key=f"sheet_l_{key_suffix}",
         )
 
@@ -1997,10 +2014,9 @@ with tab_entry:
         selected_gsm = st.selectbox(
             "GSM *",
             options=["Select GSM..."] + avail_gsms,
-            index=idx_g,
             key=f"sheet_g_{key_suffix}",
         )
-
+        
     has_unselected = (
         selected_product == "Select Product..."
         or selected_width == "Select Width..."
