@@ -1758,3 +1758,525 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
+
+
+
+####################################### Paper Sheet Stock ######################################
+
+# ------------------------------------------------------
+# Google Apps Script API Configuration
+# ------------------------------------------------------
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFiTY2W44BRhicfK7nTxEk5aOVQjNMIcq8wj3fUct_kMfdzkfxcsUpda0isAt6b_mY/exec"
+
+COLUMNS_MASTER = ["Height", "Width", "GSM", "Gross", "Pcs", "Remark"]
+COLUMNS_HISTORY = [
+    "Date",
+    "Type",
+    "Height",
+    "Width",
+    "GSM",
+    "Gross",
+    "Pcs",
+    "Remark",
+]
+
+
+# ------------------------------------------------------
+# Helpers: Automatic Pcs Calculation Callbacks
+# ------------------------------------------------------
+def sync_mod_gross():
+    """Callback to calculate Pcs from Gross for Mode A (Gross * 144)."""
+    key_suf = st.session_state.get("sheet_form_key", 0)
+    gross_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
+    st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(gross_val * 144))
+
+
+def sync_new_gross():
+    """Callback to calculate Pcs from Gross for Mode B (Gross * 144)."""
+    key_suf = st.session_state.get("sheet_form_key", 0)
+    gross_val = st.session_state.get(f"sheet_g_new_{key_suf}", 0.0)
+    st.session_state[f"sheet_pcs_new_{key_suf}"] = int(round(gross_val * 144))
+
+
+# ------------------------------------------------------
+# Load Data via Apps Script
+# ------------------------------------------------------
+@st.cache_data(ttl=5)
+def fetch_all_sheet_data():
+    try:
+        response = requests.get(
+            f"{APPS_SCRIPT_URL}?action=read_all",
+            allow_redirects=True,
+            timeout=30,
+        )
+
+        if "text/html" in response.headers.get("Content-Type", ""):
+            st.error(
+                "⚠️ Google returned HTML instead of JSON. Ensure Web App access is set to 'Anyone'."
+            )
+            return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(
+                columns=COLUMNS_HISTORY
+            )
+
+        data = response.json()
+
+        master_df = pd.DataFrame(data.get("master", []))
+        history_df = pd.DataFrame(data.get("history", []))
+
+        # Ensure mandatory columns exist
+        for col in COLUMNS_MASTER:
+            if col not in master_df.columns:
+                master_df[col] = 0 if col in ["Gross", "Pcs"] else ""
+
+        for col in COLUMNS_HISTORY:
+            if col not in history_df.columns:
+                history_df[col] = 0 if col in ["Gross", "Pcs"] else ""
+
+        return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
+
+    except Exception as e:
+        st.error(f"Error connecting to Sheet Apps Script API: {e}")
+        return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(
+            columns=COLUMNS_HISTORY
+        )
+
+
+# ------------------------------------------------------
+# Submit Record via Apps Script
+# ------------------------------------------------------
+def send_sheet_update(payload):
+    try:
+        res = requests.post(
+            APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15
+        )
+
+        if "text/html" in res.headers.get("Content-Type", ""):
+            st.error(
+                "⚠️ Failed to update: Received HTML response. Check Web App URL permissions."
+            )
+            return
+
+        res_data = res.json()
+
+        if res_data.get("status") == "success":
+            st.toast("✅ Sheet stock updated successfully!")
+            st.cache_data.clear()
+            st.session_state.sheet_form_key += 1
+            st.rerun()
+        else:
+            st.error(
+                f"❌ Apps Script Error: {res_data.get('message', 'Unknown Error')}"
+            )
+
+    except Exception as e:
+        st.error(f"Failed to send sheet update: {e}")
+
+
+# ------------------------------------------------------
+# Main Application Flow
+# ------------------------------------------------------
+sheet_df, sheet_history_df = fetch_all_sheet_data()
+
+st.markdown("---")
+st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
+
+if "sheet_form_key" not in st.session_state:
+    st.session_state.sheet_form_key = 0
+key_suffix_sheet = st.session_state.sheet_form_key
+
+tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
+
+with tab_entry:
+    st.markdown("##### 🔍 Select Specification")
+
+    unique_heights = (
+        sorted(list(set(sheet_df["Height"].astype(str).str.strip().unique())))
+        if not sheet_df.empty
+        else []
+    )
+    unique_widths = (
+        sorted(list(set(sheet_df["Width"].astype(str).str.strip().unique())))
+        if not sheet_df.empty
+        else []
+    )
+    unique_gsms = (
+        sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique())))
+        if not sheet_df.empty
+        else []
+    )
+
+    col_s1, col_s2, col_s3 = st.columns(3)
+    with col_s1:
+        selected_height = st.selectbox(
+            "Height *",
+            options=["Select Height..."] + unique_heights + ["➕ New Height"],
+            key=f"sheet_h_{key_suffix_sheet}",
+        )
+    with col_s2:
+        selected_width = st.selectbox(
+            "Width *",
+            options=["Select Width..."] + unique_widths + ["➕ New Width"],
+            key=f"sheet_w_{key_suffix_sheet}",
+        )
+    with col_s3:
+        selected_gsm = st.selectbox(
+            "GSM *",
+            options=["Select GSM..."] + unique_gsms + ["➕ New GSM"],
+            key=f"sheet_g_{key_suffix_sheet}",
+        )
+
+    has_unselected = (
+        selected_height == "Select Height..."
+        or selected_width == "Select Width..."
+        or selected_gsm == "Select GSM..."
+    )
+
+    explicit_new_requested = (
+        selected_height == "➕ New Height"
+        or selected_width == "➕ New Width"
+        or selected_gsm == "➕ New GSM"
+    )
+
+    matched_rows = pd.DataFrame()
+    if not has_unselected and not explicit_new_requested and not sheet_df.empty:
+        matched_rows = sheet_df[
+            (
+                sheet_df["Height"].astype(str).str.strip().str.lower()
+                == selected_height.lower()
+            )
+            & (
+                sheet_df["Width"].astype(str).str.strip().str.lower()
+                == selected_width.lower()
+            )
+            & (
+                sheet_df["GSM"].astype(str).str.strip().str.lower()
+                == selected_gsm.lower()
+            )
+        ]
+
+    # --- UI ROUTING ---
+    if has_unselected:
+        st.info(
+            "👆 Please select Height, Width, and GSM from the dropdowns above to proceed."
+        )
+
+    # Mode A: Existing Item Found -> Modify / Record Usage
+    elif not matched_rows.empty:
+        matched_row = matched_rows.iloc[0]
+
+        curr_gross = float(
+            pd.to_numeric(matched_row["Gross"], errors="coerce") or 0.0
+        )
+        curr_pcs = int(
+            pd.to_numeric(matched_row["Pcs"], errors="coerce")
+            or round(curr_gross * 144)
+        )
+
+        st.success(
+            f"📌 **Current Stock:** {curr_gross:.2f} Gross | **Total Pcs:** {curr_pcs} Pcs"
+        )
+
+        col_m1, col_m2 = st.columns([1.5, 2.5])
+        with col_m1:
+            txn_date = st.date_input(
+                "Date",
+                value=date.today(),
+                key=f"sheet_dt_mod_{key_suffix_sheet}",
+            )
+        with col_m2:
+            action_type = st.radio(
+                "Action *",
+                options=["Purchased (+)", "Used (-)"],
+                horizontal=True,
+                key=f"sheet_act_{key_suffix_sheet}",
+            )
+
+        # Initialize widget state for Gross & calculated Pcs
+        if f"sheet_g_mod_{key_suffix_sheet}" not in st.session_state:
+            st.session_state[f"sheet_g_mod_{key_suffix_sheet}"] = 0.0
+        if f"sheet_pcs_mod_{key_suffix_sheet}" not in st.session_state:
+            st.session_state[f"sheet_pcs_mod_{key_suffix_sheet}"] = 0
+
+        col_m3, col_m4, col_m5 = st.columns([2, 2, 3])
+        with col_m3:
+            gross_change = st.number_input(
+                "Gross Quantity *",
+                min_value=0.0,
+                step=0.1,
+                format="%.2f",
+                key=f"sheet_g_mod_{key_suffix_sheet}",
+                on_change=sync_mod_gross,
+            )
+        with col_m4:
+            pcs_change = st.number_input(
+                "Pcs (Gross × 144) *",
+                min_value=0,
+                step=144,
+                key=f"sheet_pcs_mod_{key_suffix_sheet}",
+            )
+        with col_m5:
+            new_remark = st.text_input(
+                "Remark", value="", key=f"sheet_r_mod_{key_suffix_sheet}"
+            )
+
+        final_gross = (
+            curr_gross + gross_change
+            if action_type == "Purchased (+)"
+            else curr_gross - gross_change
+        )
+        final_pcs = (
+            curr_pcs + pcs_change
+            if action_type == "Purchased (+)"
+            else curr_pcs - pcs_change
+        )
+
+        if st.button("Submit Record", type="primary", key="btn_update_sheet"):
+            if action_type == "Used (-)" and gross_change > curr_gross:
+                st.warning(
+                    f"Cannot subtract {gross_change:.2f} Gross! Available stock is only {curr_gross:.2f} Gross."
+                )
+            elif gross_change == 0 and pcs_change == 0:
+                st.warning("Please enter a non-zero Gross or Pcs value.")
+            else:
+                payload = {
+                    "action": "update_stock",
+                    "date": txn_date.strftime("%d/%m/%Y"),
+                    "type": (
+                        "Purchased"
+                        if action_type == "Purchased (+)"
+                        else "Used"
+                    ),
+                    "height": str(selected_height).strip(),
+                    "width": str(selected_width).strip(),
+                    "gsm": str(selected_gsm).strip(),
+                    "gross_change": float(gross_change),
+                    "pcs_change": int(pcs_change),
+                    "new_gross": float(final_gross),
+                    "new_pcs": int(final_pcs),
+                    "remark": new_remark.strip(),
+                }
+
+                send_sheet_update(payload)
+
+    # Mode B: Add New Item
+    else:
+        if not explicit_new_requested:
+            st.warning(
+                "💡 **New Combination Detected:** Create this new specification below."
+            )
+
+        st.markdown("##### 📝 Create New Item Specification")
+
+        default_h = "" if selected_height == "➕ New Height" else selected_height
+        default_w = "" if selected_width == "➕ New Width" else selected_width
+        default_gsm = "" if selected_gsm == "➕ New GSM" else selected_gsm
+
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            final_height = st.text_input(
+                "Height *",
+                value=default_h,
+                key=f"sheet_in_h_{key_suffix_sheet}",
+            )
+        with col_f2:
+            final_width = st.text_input(
+                "Width *", value=default_w, key=f"sheet_in_w_{key_suffix_sheet}"
+            )
+        with col_f3:
+            final_gsm = st.text_input(
+                "GSM *",
+                value=default_gsm,
+                key=f"sheet_in_gsm_{key_suffix_sheet}",
+            )
+
+        col_n1, col_n2, col_n3, col_n4 = st.columns([1.5, 1.5, 1.5, 3])
+        with col_n1:
+            txn_date = st.date_input(
+                "Date",
+                value=date.today(),
+                key=f"sheet_dt_new_{key_suffix_sheet}",
+            )
+
+        if f"sheet_g_new_{key_suffix_sheet}" not in st.session_state:
+            st.session_state[f"sheet_g_new_{key_suffix_sheet}"] = 0.0
+        if f"sheet_pcs_new_{key_suffix_sheet}" not in st.session_state:
+            st.session_state[f"sheet_pcs_new_{key_suffix_sheet}"] = 0
+
+        with col_n2:
+            new_initial_gross = st.number_input(
+                "Initial Gross *",
+                min_value=0.0,
+                step=0.1,
+                format="%.2f",
+                key=f"sheet_g_new_{key_suffix_sheet}",
+                on_change=sync_new_gross,
+            )
+        with col_n3:
+            new_initial_pcs = st.number_input(
+                "Initial Pcs *",
+                min_value=0,
+                step=144,
+                key=f"sheet_pcs_new_{key_suffix_sheet}",
+            )
+        with col_n4:
+            new_remark_text = st.text_input(
+                "Remark", key=f"sheet_r_new_{key_suffix_sheet}"
+            )
+
+        if st.button(
+            "Save New Sheet Item", type="primary", key="btn_add_new_sheet"
+        ):
+            clean_h, clean_w, clean_gsm = (
+                final_height.strip(),
+                final_width.strip(),
+                final_gsm.strip(),
+            )
+
+            if not clean_h or not clean_w or not clean_gsm:
+                st.warning("Please fill in Height, Width, and GSM.")
+            else:
+                payload = {
+                    "action": "add_new",
+                    "date": txn_date.strftime("%d/%m/%Y"),
+                    "type": "Purchased",
+                    "height": clean_h,
+                    "width": clean_w,
+                    "gsm": clean_gsm,
+                    "gross": float(new_initial_gross),
+                    "pcs": int(new_initial_pcs),
+                    "gross_change": float(new_initial_gross),
+                    "pcs_change": int(new_initial_pcs),
+                    "new_gross": float(new_initial_gross),
+                    "new_pcs": int(new_initial_pcs),
+                    "remark": f"Initial Stock - {new_remark_text.strip()}".strip(
+                        " -"
+                    ),
+                }
+
+                send_sheet_update(payload)
+
+    st.markdown("### 📋 Current Sheet Stock Summary")
+    st.dataframe(
+        sheet_df,
+        column_config={
+            "Gross": st.column_config.NumberColumn("Gross", format="%.2f"),
+            "Pcs": st.column_config.NumberColumn(
+                "Pcs (Gross × 144)", format="%d"
+            ),
+        },
+        use_container_width=True,
+        hide_index=True,
+    )
+
+
+# ------------------------------------------------------
+# Tab 2: Sheet Record History Log View
+# ------------------------------------------------------
+with tab_history:
+    st.markdown("### 📜 Date-Wise Sheet Record History Log")
+
+    if sheet_history_df.empty:
+        st.info("No sheet record history available yet.")
+    else:
+        filtered_df = sheet_history_df.copy()
+
+        # Data Cleaning & Type Normalization
+        filtered_df["Date"] = (
+            filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
+        )
+        filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
+        filtered_df["Height"] = filtered_df["Height"].astype(str).str.strip()
+        filtered_df["Width"] = filtered_df["Width"].astype(str).str.strip()
+        filtered_df["GSM"] = filtered_df["GSM"].astype(str).str.strip()
+
+        filtered_df["Gross"] = (
+            pd.to_numeric(filtered_df["Gross"], errors="coerce")
+            .fillna(0.0)
+            .astype(float)
+        )
+        filtered_df["Pcs"] = (
+            pd.to_numeric(filtered_df["Pcs"], errors="coerce")
+            .fillna(0)
+            .astype(int)
+        )
+        filtered_df["Remark"] = (
+            filtered_df["Remark"]
+            .astype(str)
+            .replace("nan", "")
+            .str.strip()
+        )
+
+        # Helper date series for comparative filtering
+        parsed_dates = pd.to_datetime(
+            filtered_df["Date"], dayfirst=True, format="mixed", errors="coerce"
+        ).dt.date
+
+        valid_dates = parsed_dates.dropna()
+        min_date = valid_dates.min() if not valid_dates.empty else date.today()
+        max_date = valid_dates.max() if not valid_dates.empty else date.today()
+
+        # Column Controls Layout
+        col_h1, col_h2, col_h3, col_h4 = st.columns(4)
+
+        with col_h1:
+            date_range = st.date_input(
+                "Filter Date Range",
+                value=(min_date, max_date),
+                key=f"sheet_hist_filter_date_{key_suffix_sheet}",
+            )
+        with col_h2:
+            filter_type = st.multiselect(
+                "Filter Action Type",
+                options=["Purchased", "Used"],
+                default=["Purchased", "Used"],
+                key=f"sheet_hist_filter_type_{key_suffix_sheet}",
+            )
+        with col_h3:
+            filter_gsm = st.multiselect(
+                "Filter GSM",
+                options=sorted(filtered_df["GSM"].unique()),
+                key=f"sheet_hist_filter_gsm_{key_suffix_sheet}",
+            )
+        with col_h4:
+            search_text = st.text_input(
+                "Search Remarks/Specs",
+                key=f"sheet_hist_search_{key_suffix_sheet}",
+            )
+
+        # Multi-case Date Range Evaluation
+        if date_range:
+            if isinstance(date_range, (tuple, list)):
+                if len(date_range) == 2:
+                    start_d, end_d = date_range
+                    filtered_df = filtered_df[
+                        (parsed_dates >= start_d) & (parsed_dates <= end_d)
+                    ]
+                elif len(date_range) == 1:
+                    start_d = date_range[0]
+                    filtered_df = filtered_df[parsed_dates >= start_d]
+            elif isinstance(date_range, date):
+                filtered_df = filtered_df[parsed_dates == date_range]
+
+        # Apply Remaining Filters
+        if filter_type:
+            filtered_df = filtered_df[filtered_df["Type"].isin(filter_type)]
+        if filter_gsm:
+            filtered_df = filtered_df[filtered_df["GSM"].isin(filter_gsm)]
+        if search_text:
+            filtered_df = filtered_df[
+                filtered_df["Remark"].str.contains(search_text, case=False)
+                | filtered_df["Height"].str.contains(search_text, case=False)
+                | filtered_df["Width"].str.contains(search_text, case=False)
+            ]
+
+        st.dataframe(
+            filtered_df[COLUMNS_HISTORY],
+            column_config={
+                "Gross": st.column_config.NumberColumn("Gross", format="%.2f"),
+                "Pcs": st.column_config.NumberColumn(
+                    "Pcs (Gross × 144)", format="%d"
+                ),
+            },
+            use_container_width=True,
+            hide_index=True,
+        )
