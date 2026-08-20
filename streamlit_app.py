@@ -1782,9 +1782,6 @@ COLUMNS_HISTORY = [
 ]
 
 
-# ------------------------------------------------------
-# Helpers: Automatic Pcs Calculation Callbacks
-# ------------------------------------------------------
 def sync_mod_grus():
     """Callback to calculate Pcs from Grus (Grus * 144)."""
     key_suf = st.session_state.get("sheet_form_key", 0)
@@ -1793,7 +1790,6 @@ def sync_mod_grus():
 
 
 def calculate_current_stock(history_df, product, width, length, gsm):
-    """Calculates live stock by summing history transactions (Purchased +, Used -)."""
     if history_df.empty:
         return 0.0, 0
 
@@ -1835,9 +1831,6 @@ def calculate_current_stock(history_df, product, width, length, gsm):
     return float(total_grus), int(total_pcs)
 
 
-# ------------------------------------------------------
-# Load Data via Apps Script
-# ------------------------------------------------------
 @st.cache_data(ttl=5)
 def fetch_all_sheet_data():
     try:
@@ -1848,19 +1841,15 @@ def fetch_all_sheet_data():
         )
 
         if "text/html" in response.headers.get("Content-Type", ""):
-            st.error(
-                "⚠️ Google returned HTML instead of JSON. Ensure Web App access is set to 'Anyone'."
-            )
+            st.error("⚠️ Ensure Web App access is set to 'Anyone'.")
             return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(
                 columns=COLUMNS_HISTORY
             )
 
         data = response.json()
-
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
 
-        # Ensure mandatory columns exist
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
                 master_df[col] = 0 if col in ["Grus", "Pcs"] else ""
@@ -1872,33 +1861,29 @@ def fetch_all_sheet_data():
         return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
 
     except Exception as e:
-        st.error(f"Error connecting to Sheet Apps Script API: {e}")
+        st.error(f"Error connecting to Sheet API: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(
             columns=COLUMNS_HISTORY
         )
 
 
-# ------------------------------------------------------
-# Submit Record via Apps Script
-# ------------------------------------------------------
 def send_sheet_update(payload):
     try:
         res = requests.post(
             APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15
         )
 
-        if "text/html" in res.headers.get("Content-Type", ""):
-            st.error(
-                "⚠️ Failed to update: Received HTML response. Check Web App URL permissions."
-            )
-            return
-
         res_data = res.json()
-
         if res_data.get("status") == "success":
-            st.toast("✅ Transaction recorded to History successfully!")
+            st.toast("✅ Recorded to History successfully!")
             st.cache_data.clear()
             st.session_state.sheet_form_key += 1
+
+            # Clear auto-filled session states
+            for k in ["auto_w", "auto_l", "auto_g"]:
+                if k in st.session_state:
+                    del st.session_state[k]
+
             st.rerun()
         else:
             st.error(
@@ -1906,12 +1891,9 @@ def send_sheet_update(payload):
             )
 
     except Exception as e:
-        st.error(f"Failed to send sheet update: {e}")
+        st.error(f"Failed to send update: {e}")
 
 
-# ------------------------------------------------------
-# Main Application Flow
-# ------------------------------------------------------
 sheet_df, sheet_history_df = fetch_all_sheet_data()
 
 st.markdown("---")
@@ -1919,19 +1901,32 @@ st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
 
 if "sheet_form_key" not in st.session_state:
     st.session_state.sheet_form_key = 0
-key_suffix_sheet = st.session_state.sheet_form_key
+key_suffix = st.session_state.sheet_form_key
 
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 with tab_entry:
     st.markdown("##### 🔍 Select Product (Auto-Fills Details)")
 
-    # 1. Product Options
     unique_products = (
         sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique())))
         if not sheet_df.empty
         else []
     )
+
+    # Function triggered whenever Product dropdown changes
+    def on_product_change():
+        p_val = st.session_state.get(f"sheet_p_{key_suffix}")
+        if p_val and p_val != "Select Product...":
+            sub_df = sheet_df[
+                sheet_df["Product"].astype(str).str.strip().str.lower()
+                == p_val.strip().lower()
+            ]
+            if not sub_df.empty:
+                first_row = sub_df.iloc[0]
+                st.session_state["auto_w"] = str(first_row["Width"]).strip()
+                st.session_state["auto_l"] = str(first_row["Length"]).strip()
+                st.session_state["auto_g"] = str(first_row["GSM"]).strip()
 
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
@@ -1939,62 +1934,71 @@ with tab_entry:
         selected_product = st.selectbox(
             "Product *",
             options=["Select Product..."] + unique_products,
-            key=f"sheet_p_{key_suffix_sheet}",
+            key=f"sheet_p_{key_suffix}",
+            on_change=on_product_change,
         )
 
-    # Filter catalog subset based on chosen Product
+    # Get auto-filled values if product selected, otherwise fallback to empty list
     if selected_product != "Select Product...":
-        filtered_master = sheet_df[
+        sub_df = sheet_df[
             sheet_df["Product"].astype(str).str.strip().str.lower()
             == selected_product.strip().lower()
         ]
+        avail_widths = sorted(
+            list(set(sub_df["Width"].astype(str).str.strip().unique()))
+        )
+        avail_lengths = sorted(
+            list(set(sub_df["Length"].astype(str).str.strip().unique()))
+        )
+        avail_gsms = sorted(
+            list(set(sub_df["GSM"].astype(str).str.strip().unique()))
+        )
     else:
-        filtered_master = pd.DataFrame()
+        avail_widths, avail_lengths, avail_gsms = [], [], []
 
-    # 2. Dynamic Auto-Filtered Options
-    avail_widths = (
-        sorted(list(set(filtered_master["Width"].astype(str).str.strip().unique())))
-        if not filtered_master.empty
-        else []
-    )
-    avail_lengths = (
-        sorted(list(set(filtered_master["Length"].astype(str).str.strip().unique())))
-        if not filtered_master.empty
-        else []
-    )
-    avail_gsms = (
-        sorted(list(set(filtered_master["GSM"].astype(str).str.strip().unique())))
-        if not filtered_master.empty
-        else []
-    )
+    # Get index positions for state retention
+    default_w = st.session_state.get("auto_w", "")
+    default_l = st.session_state.get("auto_l", "")
+    default_g = st.session_state.get("auto_g", "")
 
-    # 3. Auto-select index if only 1 matching option exists for product
-    width_idx = 1 if len(avail_widths) == 1 else 0
-    length_idx = 1 if len(avail_lengths) == 1 else 0
-    gsm_idx = 1 if len(avail_gsms) == 1 else 0
+    idx_w = (
+        avail_widths.index(default_w) + 1
+        if default_w in avail_widths
+        else (1 if len(avail_widths) == 1 else 0)
+    )
+    idx_l = (
+        avail_lengths.index(default_l) + 1
+        if default_l in avail_lengths
+        else (1 if len(avail_lengths) == 1 else 0)
+    )
+    idx_g = (
+        avail_gsms.index(default_g) + 1
+        if default_g in avail_gsms
+        else (1 if len(avail_gsms) == 1 else 0)
+    )
 
     with col_s1:
         selected_width = st.selectbox(
             "Width *",
             options=["Select Width..."] + avail_widths,
-            index=width_idx,
-            key=f"sheet_w_{key_suffix_sheet}",
+            index=idx_w,
+            key=f"sheet_w_{key_suffix}",
         )
 
     with col_s2:
         selected_length = st.selectbox(
             "Length *",
             options=["Select Length..."] + avail_lengths,
-            index=length_idx,
-            key=f"sheet_l_{key_suffix_sheet}",
+            index=idx_l,
+            key=f"sheet_l_{key_suffix}",
         )
 
     with col_s3:
         selected_gsm = st.selectbox(
             "GSM *",
             options=["Select GSM..."] + avail_gsms,
-            index=gsm_idx,
-            key=f"sheet_g_{key_suffix_sheet}",
+            index=idx_g,
+            key=f"sheet_g_{key_suffix}",
         )
 
     has_unselected = (
@@ -2005,11 +2009,8 @@ with tab_entry:
     )
 
     if has_unselected:
-        st.info(
-            "👆 Select a Product to auto-fill details, or complete the remaining drop-downs."
-        )
+        st.info("👆 Please select a Product to auto-fill details.")
     else:
-        # Compute live stock balance dynamically from sheet_history
         curr_grus, curr_pcs = calculate_current_stock(
             sheet_history_df,
             selected_product,
@@ -2028,20 +2029,20 @@ with tab_entry:
             txn_date = st.date_input(
                 "Date",
                 value=date.today(),
-                key=f"sheet_dt_mod_{key_suffix_sheet}",
+                key=f"sheet_dt_mod_{key_suffix}",
             )
         with col_m2:
             action_type = st.radio(
                 "Action *",
                 options=["Purchased (+)", "Used (-)"],
                 horizontal=True,
-                key=f"sheet_act_{key_suffix_sheet}",
+                key=f"sheet_act_{key_suffix}",
             )
 
-        if f"sheet_g_mod_{key_suffix_sheet}" not in st.session_state:
-            st.session_state[f"sheet_g_mod_{key_suffix_sheet}"] = 0.0
-        if f"sheet_pcs_mod_{key_suffix_sheet}" not in st.session_state:
-            st.session_state[f"sheet_pcs_mod_{key_suffix_sheet}"] = 0
+        if f"sheet_g_mod_{key_suffix}" not in st.session_state:
+            st.session_state[f"sheet_g_mod_{key_suffix}"] = 0.0
+        if f"sheet_pcs_mod_{key_suffix}" not in st.session_state:
+            st.session_state[f"sheet_pcs_mod_{key_suffix}"] = 0
 
         col_m3, col_m4, col_m5 = st.columns([2, 2, 3])
         with col_m3:
@@ -2050,7 +2051,7 @@ with tab_entry:
                 min_value=0.0,
                 step=0.1,
                 format="%.2f",
-                key=f"sheet_g_mod_{key_suffix_sheet}",
+                key=f"sheet_g_mod_{key_suffix}",
                 on_change=sync_mod_grus,
             )
         with col_m4:
@@ -2058,11 +2059,11 @@ with tab_entry:
                 "Pcs (Grus × 144) *",
                 min_value=0,
                 step=144,
-                key=f"sheet_pcs_mod_{key_suffix_sheet}",
+                key=f"sheet_pcs_mod_{key_suffix}",
             )
         with col_m5:
             new_remark = st.text_input(
-                "Remark", value="", key=f"sheet_r_mod_{key_suffix_sheet}"
+                "Remark", value="", key=f"sheet_r_mod_{key_suffix}"
             )
 
         if st.button("Submit History Record", type="primary", key="btn_update_sheet"):
@@ -2093,16 +2094,9 @@ with tab_entry:
                 send_sheet_update(payload)
 
     st.markdown("### 📋 Static Catalog Reference (`sheet_stock`)")
-    st.dataframe(
-        sheet_df,
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.dataframe(sheet_df, use_container_width=True, hide_index=True)
 
 
-# ------------------------------------------------------
-# Tab 2: Sheet Record History Log View
-# ------------------------------------------------------
 with tab_history:
     st.markdown("### 📜 Date-Wise Sheet Record History Log")
 
@@ -2155,31 +2149,31 @@ with tab_history:
             date_range = st.date_input(
                 "Filter Date Range",
                 value=(min_date, max_date),
-                key=f"sheet_hist_filter_date_{key_suffix_sheet}",
+                key=f"sheet_hist_filter_date_{key_suffix}",
             )
         with col_h2:
             filter_type = st.multiselect(
                 "Filter Action Type",
                 options=["Purchased", "Used"],
                 default=["Purchased", "Used"],
-                key=f"sheet_hist_filter_type_{key_suffix_sheet}",
+                key=f"sheet_hist_filter_type_{key_suffix}",
             )
         with col_h3:
             filter_product = st.multiselect(
                 "Filter Product",
                 options=sorted(filtered_df["Product"].unique()),
-                key=f"sheet_hist_filter_prod_{key_suffix_sheet}",
+                key=f"sheet_hist_filter_prod_{key_suffix}",
             )
         with col_h4:
             filter_gsm = st.multiselect(
                 "Filter GSM",
                 options=sorted(filtered_df["GSM"].unique()),
-                key=f"sheet_hist_filter_gsm_{key_suffix_sheet}",
+                key=f"sheet_hist_filter_gsm_{key_suffix}",
             )
         with col_h5:
             search_text = st.text_input(
                 "Search Remarks/Specs",
-                key=f"sheet_hist_search_{key_suffix_sheet}",
+                key=f"sheet_hist_search_{key_suffix}",
             )
 
         if date_range:
