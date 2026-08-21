@@ -1584,11 +1584,12 @@ with tab_entry:
                 
                 send_update_to_sheet(payload)
 
-    # Mode B: Add New Item
-      else:
-          if not explicit_new_requested:
-            st.warning("💡 **New Combination Detected:** Create this new specification below.")
-        
+if st.button("Submit Record", type="primary"):
+            # ... (Your existing submission validation and payload logic goes here) ...
+            st.success("Record processing logic triggered.")
+
+    else:
+        # Mode B: Add New Item (This replaces your orphaned 'else:')
         st.markdown("##### 📝 Create New Item Specification")
         
         default_sz = "" if selected_size == "➕ New Size" else selected_size
