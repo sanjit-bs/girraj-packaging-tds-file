@@ -1416,69 +1416,112 @@ key_suffix_rill = st.session_state.form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 with tab_entry:
-    st.markdown("##### 🔍 Select Specification")
+    st.markdown("##### 🔍 Select Product (Auto-Fills Details or Add New)")
 
-    unique_sizes = sorted(list(set(rill_df["Size"].astype(str).str.strip().unique()))) if not rill_df.empty else []
-    unique_gsms = sorted(list(set(rill_df["GSM"].astype(str).str.strip().unique()))) if not rill_df.empty else []
-    unique_bfs = sorted(list(set(rill_df["BF"].astype(str).str.strip().unique()))) if not rill_df.empty else []
-
-    col_s1, col_s2, col_s3 = st.columns(3)
-    with col_s1:
-        selected_size = st.selectbox("Size *", options=["Select Size..."] + unique_sizes + ["➕ New Size"], key=f"rill_s_{key_suffix_rill}")
-    with col_s2:
-        selected_gsm = st.selectbox("GSM *", options=["Select GSM..."] + unique_gsms + ["➕ New GSM"], key=f"rill_g_{key_suffix_rill}")
-    with col_s3:
-        selected_bf = st.selectbox("BF *", options=["Select BF..."] + unique_bfs + ["➕ New BF"], key=f"rill_b_{key_suffix_rill}")
-
-    has_unselected = (
-        selected_size == "Select Size..." or 
-        selected_gsm == "Select GSM..." or 
-        selected_bf == "Select BF..."
+    unique_products = (
+        sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique())))
+        if not sheet_df.empty
+        else []
     )
 
-    explicit_new_requested = (
-        selected_size == "➕ New Size" or 
-        selected_gsm == "➕ New GSM" or 
-        selected_bf == "➕ New BF"
-    )
+    def on_product_change():
+        p_val = st.session_state.get(f"sheet_p_{key_suffix}")
+        
+        # Only auto-fill if an EXISTING product is selected from the master list
+        if p_val and p_val not in ["Select Product...", "➕ Add New..."]:
+            sub_df = sheet_df[
+                sheet_df["Product"].astype(str).str.strip().str.lower()
+                == p_val.strip().lower()
+            ]
+            if not sub_df.empty:
+                first_row = sub_df.iloc[0]
+                st.session_state[f"sheet_w_{key_suffix}"] = str(first_row["Width"]).strip()
+                st.session_state[f"sheet_l_{key_suffix}"] = str(first_row["Length"]).strip()
+                st.session_state[f"sheet_g_{key_suffix}"] = str(first_row["GSM"]).strip()
+        else:
+            # Reset dropdowns if unselected or if adding a completely new product
+            st.session_state[f"sheet_w_{key_suffix}"] = "Select Width..."
+            st.session_state[f"sheet_l_{key_suffix}"] = "Select Length..."
+            st.session_state[f"sheet_g_{key_suffix}"] = "Select GSM..."
 
-    matched_rows = pd.DataFrame()
-    if not has_unselected and not explicit_new_requested and not rill_df.empty:
-        matched_rows = rill_df[
-            (rill_df["Size"].astype(str).str.strip().str.lower() == selected_size.lower()) &
-            (rill_df["GSM"].astype(str).str.strip().str.lower() == selected_gsm.lower()) &
-            (rill_df["BF"].astype(str).str.strip().str.lower() == selected_bf.lower())
+    col_s0, col_s1, col_s2, col_s3 = st.columns(4)
+
+    with col_s0:
+        sel_p = st.selectbox(
+            "Product *",
+            options=["Select Product...", "➕ Add New..."] + unique_products,
+            key=f"sheet_p_{key_suffix}",
+            on_change=on_product_change,
+        )
+        if sel_p == "➕ Add New...":
+            final_p = st.text_input("Type New Product *", key=f"new_p_{key_suffix}")
+        else:
+            final_p = sel_p if sel_p != "Select Product..." else ""
+
+    # Fetch available spec sizes ONLY if an existing product is chosen
+    if final_p and sel_p != "➕ Add New...":
+        sub_df = sheet_df[
+            sheet_df["Product"].astype(str).str.strip().str.lower()
+            == final_p.strip().lower()
         ]
+        avail_widths = sorted(list(set(sub_df["Width"].astype(str).str.strip().unique())))
+        avail_lengths = sorted(list(set(sub_df["Length"].astype(str).str.strip().unique())))
+        avail_gsms = sorted(list(set(sub_df["GSM"].astype(str).str.strip().unique())))
+    else:
+        avail_widths, avail_lengths, avail_gsms = [], [], []
 
-    # --- UI ROUTING ---
+    with col_s1:
+        sel_w = st.selectbox(
+            "Width *",
+            options=["Select Width...", "➕ Add New..."] + avail_widths,
+            key=f"sheet_w_{key_suffix}",
+        )
+        if sel_w == "➕ Add New...":
+            final_w = st.text_input("Type New Width *", key=f"new_w_{key_suffix}")
+        else:
+            final_w = sel_w if sel_w != "Select Width..." else ""
+
+    with col_s2:
+        sel_l = st.selectbox(
+            "Length *",
+            options=["Select Length...", "➕ Add New..."] + avail_lengths,
+            key=f"sheet_l_{key_suffix}",
+        )
+        if sel_l == "➕ Add New...":
+            final_l = st.text_input("Type New Length *", key=f"new_l_{key_suffix}")
+        else:
+            final_l = sel_l if sel_l != "Select Length..." else ""
+
+    with col_s3:
+        sel_g = st.selectbox(
+            "GSM *",
+            options=["Select GSM...", "➕ Add New..."] + avail_gsms,
+            key=f"sheet_g_{key_suffix}",
+        )
+        if sel_g == "➕ Add New...":
+            final_g = st.text_input("Type New GSM *", key=f"new_g_{key_suffix}")
+        else:
+            final_g = sel_g if sel_g != "Select GSM..." else ""
+
+    # Validate that every single field has been either selected or typed
+    has_unselected = not (final_p and final_w and final_l and final_g)
+
     if has_unselected:
-        st.info("👆 Please select Size, GSM, and BF from the dropdowns above to proceed.")
+        st.info("👆 Please select or type all details to proceed.")
+    else:
+        # Calculate stock based on the final resolved values
+        curr_grus, curr_pcs = calculate_current_stock(
+            sheet_history_df,
+            final_p,
+            final_w,
+            final_l,
+            final_g,
+        )
 
-    # Mode A: Existing Item Found -> Modify / Record Usage
-    elif not matched_rows.empty:
-        matched_row = matched_rows.iloc[0]
-
-        curr_qty = int(pd.to_numeric(matched_row["Quantity"], errors="coerce") or 0)
-        curr_weight = float(pd.to_numeric(matched_row["Weight"], errors="coerce") or 0.0)
-        curr_breakup = str(matched_row.get("Breakup_Weight", "")).strip()
-
-        st.success(f"📌 **Current Stock:** {curr_qty} Rills | **Weight:** {curr_weight:.2f} kg")
-        if curr_breakup:
-            st.caption(f"**Current Stock Breakup (kg):** {curr_breakup}")
-
-        col_m1, col_m2, col_m3 = st.columns([1.5, 2, 2.5])
-        with col_m1:
-            txn_date = st.date_input("Date", value=date.today(), key=f"dt_mod_{key_suffix_rill}")
-        with col_m2:
-            action_type = st.radio("Action *", options=["Purchased (+)", "Used (-)"], horizontal=True, key=f"act_{key_suffix_rill}")
-        with col_m3:
-            raw_breakup = st.text_input(
-                "Breakup Weight Entry (kg) *", 
-                placeholder="e.g. 12.5, 15.0, 10.2", 
-                help="Enter individual weights separated by commas. Quantity and total weight will auto-calculate.",
-                key=f"bk_mod_{key_suffix_rill}",
-                on_change=sync_mod_breakup
-            )
+        st.success(
+            f"📌 **Selected Spec:** {final_p} | {final_w} × {final_l} | {final_g} GSM  \n"
+            f"⚡ **Current Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs"
+        )
 
         _, _, clean_breakup_str = parse_breakup_weights(raw_breakup)
         new_master_breakup, missing_weights = update_master_breakup(curr_breakup, raw_breakup, action_type)
@@ -2115,10 +2158,10 @@ with tab_entry:
                         if action_type == "Purchased (+)"
                         else "Used"
                     ),
-                    "product": str(selected_product).strip(),
-                    "width": str(selected_width).strip(),
-                    "length": str(selected_length).strip(),
-                    "gsm": str(selected_gsm).strip(),
+                    "product": str(final_p).strip(),  # <--- UPDATED
+                    "width": str(final_w).strip(),    # <--- UPDATED
+                    "length": str(final_l).strip(),   # <--- UPDATED
+                    "gsm": str(final_g).strip(),      # <--- UPDATED
                     "grus_change": float(grus_change),
                     "pcs_change": int(pcs_change),
                     "remark": new_remark.strip(),
