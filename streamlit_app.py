@@ -1980,12 +1980,7 @@ key_suffix = st.session_state.sheet_form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 with tab_entry:
-    col_title, col_toggle = st.columns([3, 1])
-    with col_title:
-        st.markdown("##### 🔍 Select Product (Auto-Fills Details)")
-    with col_toggle:
-        # Toggle switch to allow manual text entry for new items
-        is_new_entry = st.toggle("➕ Add New Item", key=f"new_item_toggle_{key_suffix}")
+    st.markdown("##### 🔍 Select Product (Auto-Fills Details or Add New)")
 
     unique_products = (
         sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique())))
@@ -1995,7 +1990,7 @@ with tab_entry:
 
     def on_product_change():
         p_val = st.session_state.get(f"sheet_p_{key_suffix}")
-        if p_val and p_val != "Select Product...":
+        if p_val and p_val not in ["Select Product...", "➕ Add New..."]:
             sub_df = sheet_df[
                 sheet_df["Product"].astype(str).str.strip().str.lower()
                 == p_val.strip().lower()
@@ -2012,91 +2007,83 @@ with tab_entry:
 
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
-    # ==========================================
-    # BRANCH 1: USER IS ADDING A NEW ITEM
-    # ==========================================
-    if is_new_entry:
-        with col_s0:
-            selected_product = st.text_input("New Product Name *", key=f"new_p_{key_suffix}")
-        with col_s1:
-            selected_width = st.text_input("New Width *", key=f"new_w_{key_suffix}")
-        with col_s2:
-            selected_length = st.text_input("New Length *", key=f"new_l_{key_suffix}")
-        with col_s3:
-            selected_gsm = st.text_input("New GSM *", key=f"new_g_{key_suffix}")
-            
-        # Validation for new entry mode
-        has_unselected = not (selected_product and selected_width and selected_length and selected_gsm)
-        if has_unselected:
-            st.info("👆 Please type in all details for the new product.")
-
-    # ==========================================
-    # BRANCH 2: USER IS SELECTING EXISTING ITEM
-    # ==========================================
-    else:
-        with col_s0:
-            selected_product = st.selectbox(
-                "Product *",
-                options=["Select Product..."] + unique_products,
-                key=f"sheet_p_{key_suffix}",
-                on_change=on_product_change,
-            )
-
-        if selected_product != "Select Product...":
-            sub_df = sheet_df[
-                sheet_df["Product"].astype(str).str.strip().str.lower()
-                == selected_product.strip().lower()
-            ]
-            avail_widths = sorted(list(set(sub_df["Width"].astype(str).str.strip().unique())))
-            avail_lengths = sorted(list(set(sub_df["Length"].astype(str).str.strip().unique())))
-            avail_gsms = sorted(list(set(sub_df["GSM"].astype(str).str.strip().unique())))
-        else:
-            avail_widths, avail_lengths, avail_gsms = [], [], []
-
-        with col_s1:
-            selected_width = st.selectbox(
-                "Width *",
-                options=["Select Width..."] + avail_widths,
-                key=f"sheet_w_{key_suffix}",
-            )
-        with col_s2:
-            selected_length = st.selectbox(
-                "Length *",
-                options=["Select Length..."] + avail_lengths,
-                key=f"sheet_l_{key_suffix}",
-            )
-        with col_s3:
-            selected_gsm = st.selectbox(
-                "GSM *",
-                options=["Select GSM..."] + avail_gsms,
-                key=f"sheet_g_{key_suffix}",
-            )
-
-        # Validation for dropdown mode
-        has_unselected = (
-            selected_product == "Select Product..."
-            or selected_width == "Select Width..."
-            or selected_length == "Select Length..."
-            or selected_gsm == "Select GSM..."
+    with col_s0:
+        sel_p = st.selectbox(
+            "Product *",
+            options=["Select Product...", "➕ Add New..."] + unique_products,
+            key=f"sheet_p_{key_suffix}",
+            on_change=on_product_change,
         )
+        if sel_p == "➕ Add New...":
+            final_p = st.text_input("Type New Product *", key=f"new_p_{key_suffix}")
+        else:
+            final_p = sel_p if sel_p != "Select Product..." else ""
 
-        if has_unselected:
-            st.info("👆 Please select a Product to auto-fill details.")
+    # Fetch available spec sizes ONLY if an existing product is chosen
+    if final_p and sel_p != "➕ Add New...":
+        sub_df = sheet_df[
+            sheet_df["Product"].astype(str).str.strip().str.lower()
+            == final_p.strip().lower()
+        ]
+        avail_widths = sorted(list(set(sub_df["Width"].astype(str).str.strip().unique())))
+        avail_lengths = sorted(list(set(sub_df["Length"].astype(str).str.strip().unique())))
+        avail_gsms = sorted(list(set(sub_df["GSM"].astype(str).str.strip().unique())))
+    else:
+        avail_widths, avail_lengths, avail_gsms = [], [], []
+
+    with col_s1:
+        sel_w = st.selectbox(
+            "Width *",
+            options=["Select Width...", "➕ Add New..."] + avail_widths,
+            key=f"sheet_w_{key_suffix}",
+        )
+        if sel_w == "➕ Add New...":
+            final_w = st.text_input("Type New Width *", key=f"new_w_{key_suffix}")
+        else:
+            final_w = sel_w if sel_w != "Select Width..." else ""
+
+    with col_s2:
+        sel_l = st.selectbox(
+            "Length *",
+            options=["Select Length...", "➕ Add New..."] + avail_lengths,
+            key=f"sheet_l_{key_suffix}",
+        )
+        if sel_l == "➕ Add New...":
+            final_l = st.text_input("Type New Length *", key=f"new_l_{key_suffix}")
+        else:
+            final_l = sel_l if sel_l != "Select Length..." else ""
+
+    with col_s3:
+        sel_g = st.selectbox(
+            "GSM *",
+            options=["Select GSM...", "➕ Add New..."] + avail_gsms,
+            key=f"sheet_g_{key_suffix}",
+        )
+        if sel_g == "➕ Add New...":
+            final_g = st.text_input("Type New GSM *", key=f"new_g_{key_suffix}")
+        else:
+            final_g = sel_g if sel_g != "Select GSM..." else ""
+
+    # Validation
+    has_unselected = not (final_p and final_w and final_l and final_g)
+
+    if has_unselected:
+        st.info("👆 Please select or type all details to proceed.")
 
     # ==========================================
-    # PROCEED TO SUBMIT FORM (Same for both branches)
+    # PROCEED TO SUBMIT FORM
     # ==========================================
     if not has_unselected:
         curr_grus, curr_pcs = calculate_current_stock(
             sheet_history_df,
-            selected_product,
-            selected_width,
-            selected_length,
-            selected_gsm,
+            final_p,
+            final_w,
+            final_l,
+            final_g,
         )
 
         st.success(
-            f"📌 **Selected Spec:** {selected_product} | {selected_width} × {selected_length} | {selected_gsm} GSM  \n"
+            f"📌 **Selected Spec:** {final_p} | {final_w} × {final_l} | {final_g} GSM  \n"
             f"⚡ **Current Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs"
         )
 
@@ -2158,10 +2145,10 @@ with tab_entry:
                         if action_type == "Purchased (+)"
                         else "Used"
                     ),
-                    "product": str(final_p).strip(),  # <--- UPDATED
-                    "width": str(final_w).strip(),    # <--- UPDATED
-                    "length": str(final_l).strip(),   # <--- UPDATED
-                    "gsm": str(final_g).strip(),      # <--- UPDATED
+                    "product": str(final_p).strip(),  
+                    "width": str(final_w).strip(),    
+                    "length": str(final_l).strip(),   
+                    "gsm": str(final_g).strip(),      
                     "grus_change": float(grus_change),
                     "pcs_change": int(pcs_change),
                     "remark": new_remark.strip(),
