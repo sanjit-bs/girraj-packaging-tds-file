@@ -1585,8 +1585,8 @@ with tab_entry:
                 send_update_to_sheet(payload)
 
     # Mode B: Add New Item
-    else:
-        if not explicit_new_requested:
+      else:
+          if not explicit_new_requested:
             st.warning("💡 **New Combination Detected:** Create this new specification below.")
         
         st.markdown("##### 📝 Create New Item Specification")
