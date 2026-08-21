@@ -1393,7 +1393,7 @@ key_suffix_rill = st.session_state.form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 # ------------------------------------------------------
-# Tab 1: Record Entry (RESTORED TO ORIGINAL CONCEPT)
+# Tab 1: Record Entry
 # ------------------------------------------------------
 with tab_entry:
     st.markdown("##### 🔍 Select Product Specifications (Auto-Fills Details or Add New)")
@@ -1461,10 +1461,12 @@ with tab_entry:
             curr_qty = int(pd.to_numeric(match_df["Quantity"]).sum())
             curr_weight = float(pd.to_numeric(match_df["Weight"]).sum())
             curr_breakup = str(match_df.iloc[0]["Breakup_Weight"])
+            display_breakup = curr_breakup if curr_breakup.strip() else 'None'
 
             st.success(
                 f"📌 **Selected Spec:** {final_size} Size | {final_gsm} GSM | {final_bf} BF  \n"
-                f"⚡ **Current Stock:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg"
+                f"⚡ **Current Stock:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg  \n"
+                f"📦 **Available Breakup Weights:** {display_breakup}"
             )
 
             action_type = st.radio("Transaction Type", ["Purchased (+)", "Used (-)"], horizontal=True)
@@ -1596,18 +1598,11 @@ with tab_entry:
 # Tab 2: Record History Log View
 # ------------------------------------------------------
 with tab_history:
-    st.markdown("### 📜 Date-Wise Record History Log")
+    st.markdown("### 📜 Detailed Record History Log")
 
     if history_df.empty:
         st.info("No record history available yet.")
     else:
-        view_mode = st.radio(
-            "View Mode:", 
-            options=["📊 Detailed History Log", "Grouped"], 
-            horizontal=True,
-            key=f"rill_hist_view_mode_{key_suffix_rill}"
-        )
-
         filtered_df = history_df.copy()
 
         # Data Cleaning
@@ -1659,34 +1654,8 @@ with tab_history:
                 filtered_df["Size"].str.contains(search_text, case=False)
             ]
 
-        if "Grouped" in view_mode:
-            def combine_breakups(series):
-                all_weights = []
-                for entry in series:
-                    entry_str = str(entry).strip()
-                    if entry_str and entry_str != "nan":
-                        items = [p.strip() for p in entry_str.split(",") if p.strip()]
-                        all_weights.extend(items)
-                return ", ".join(all_weights)
-
-            def combine_remarks(series):
-                clean_remarks = [str(r).strip() for r in series if str(r).strip() and str(r).strip() != "nan"]
-                return " | ".join(dict.fromkeys(clean_remarks))
-
-            display_df = (
-                filtered_df.groupby(["Date", "Type", "Size", "GSM", "BF"], as_index=False)
-                .agg({
-                    "Quantity": "sum",
-                    "Weight": "sum",
-                    "Breakup_Weight": combine_breakups,
-                    "Remark": combine_remarks
-                })
-            )
-        else:
-            display_df = filtered_df
-
         st.dataframe(
-            display_df,
+            filtered_df,
             column_config={
                 "Quantity": st.column_config.NumberColumn("Quantity (Rolls)", format="%d"),
                 "Weight": st.column_config.NumberColumn("Weight (kg)", format="%.2f"),
@@ -1695,7 +1664,6 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
-
 
 ####################################### Paper Sheet Stock ######################################
 
