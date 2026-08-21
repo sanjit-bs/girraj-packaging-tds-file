@@ -1271,7 +1271,6 @@ def parse_breakup_weights(breakup_str):
 
 
 def sync_mod_breakup():
-    """Callback to sync Mode A breakup entry into Qty and Weight fields."""
     key_suf = st.session_state.get("form_key", 0)
     raw = st.session_state.get(f"bk_mod_{key_suf}", "")
     calc_w, calc_q, _ = parse_breakup_weights(raw)
@@ -1280,7 +1279,6 @@ def sync_mod_breakup():
 
 
 def sync_new_breakup():
-    """Callback to sync Mode B breakup entry into Qty and Weight fields."""
     key_suf = st.session_state.get("form_key", 0)
     raw = st.session_state.get(f"bk_new_{key_suf}", "")
     calc_w, calc_q, _ = parse_breakup_weights(raw)
@@ -1289,11 +1287,6 @@ def sync_new_breakup():
 
 
 def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
-    """
-    Updates the master stock's breakup string by appending purchased weights
-    or removing used weights.
-    Returns: (updated_master_breakup_str, missing_weights)
-    """
     _, _, cleaned_curr = parse_breakup_weights(curr_breakup_str)
     curr_list = [float(x.strip()) for x in cleaned_curr.split(",") if x.strip()] if cleaned_curr else []
     
@@ -1309,7 +1302,7 @@ def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
         for item in txn_list:
             match_idx = None
             for idx, val in enumerate(updated_list):
-                if abs(val - item) < 0.01:  # Match within precision tolerance
+                if abs(val - item) < 0.01:
                     match_idx = idx
                     break
             if match_idx is not None:
@@ -1327,22 +1320,16 @@ def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
 @st.cache_data(ttl=5)
 def fetch_all_data():
     try:
-        response = requests.get(
-            f"{APPS_SCRIPT_URL}?action=read_all", 
-            allow_redirects=True, 
-            timeout=30
-        )
+        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", allow_redirects=True, timeout=30)
         
         if "text/html" in response.headers.get("Content-Type", ""):
             st.error("⚠️ Google returned HTML instead of JSON. Ensure Web App access is set to 'Anyone'.")
             return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
         data = response.json()
-        
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
         
-        # Ensure mandatory columns exist
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
                 master_df[col] = 0 if col in ["Quantity", "Weight"] else ""
@@ -1363,12 +1350,7 @@ def fetch_all_data():
 # ------------------------------------------------------
 def send_update_to_sheet(payload):
     try:
-        res = requests.post(
-            APPS_SCRIPT_URL, 
-            json=payload, 
-            allow_redirects=True, 
-            timeout=15
-        )
+        res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15)
         
         if "text/html" in res.headers.get("Content-Type", ""):
             st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
@@ -1396,14 +1378,9 @@ rill_df, history_df = fetch_all_data()
 st.markdown("---")
 st.subheader("📜 Paper Rill Stock Ledger & Audit Log")
 
-# --- Standalone Converter Tool ---
 with st.expander("📐 Quick CM to Inches Converter"):
     cm_input = st.number_input(
-        "Enter Size in CM", 
-        min_value=0.0, 
-        step=0.1, 
-        format="%.2f", 
-        key="standalone_cm_converter"
+        "Enter Size in CM", min_value=0.0, step=0.1, format="%.2f", key="standalone_cm_converter"
     )
     if cm_input > 0:
         inch_result = round(cm_input / 2.54, 2)
@@ -1416,51 +1393,79 @@ key_suffix_rill = st.session_state.form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
 # ------------------------------------------------------
-# Tab 1: Record Entry
+# Tab 1: Record Entry (RESTORED TO ORIGINAL CONCEPT)
 # ------------------------------------------------------
 with tab_entry:
-    entry_mode = st.radio(
-        "Select Action Mode:",
-        ["🔄 Update Existing Stock", "➕ Add New Specification"],
-        horizontal=True,
-        key=f"mode_{key_suffix_rill}"
-    )
+    st.markdown("##### 🔍 Select Product Specifications (Auto-Fills Details or Add New)")
 
-    # ==========================================
-    # MODE A: UPDATE EXISTING STOCK
-    # ==========================================
-    if entry_mode == "🔄 Update Existing Stock":
-        st.markdown("##### 🔍 Select Existing Spec")
+    # Fetch unique values from master
+    avail_sizes = sorted(list(set(rill_df["Size"].astype(str).str.strip().unique()))) if not rill_df.empty else []
+    avail_gsms = sorted(list(set(rill_df["GSM"].astype(str).str.strip().unique()))) if not rill_df.empty else []
+    avail_bfs = sorted(list(set(rill_df["BF"].astype(str).str.strip().unique()))) if not rill_df.empty else []
 
-        col_a1, col_a2, col_a3 = st.columns(3)
-        with col_a1:
-            size_options = sorted(list(set(rill_df["Size"].astype(str).str.strip()))) if not rill_df.empty else []
-            selected_size = st.selectbox("Size *", ["Select..."] + size_options, key=f"sel_sz_{key_suffix_rill}")
-        with col_a2:
-            gsm_options = sorted(list(set(rill_df["GSM"].astype(str).str.strip()))) if not rill_df.empty else []
-            selected_gsm = st.selectbox("GSM *", ["Select..."] + gsm_options, key=f"sel_gsm_{key_suffix_rill}")
-        with col_a3:
-            bf_options = sorted(list(set(rill_df["BF"].astype(str).str.strip()))) if not rill_df.empty else []
-            selected_bf = st.selectbox("BF *", ["Select..."] + bf_options, key=f"sel_bf_{key_suffix_rill}")
+    col_s1, col_s2, col_s3 = st.columns(3)
 
-        if selected_size != "Select..." and selected_gsm != "Select..." and selected_bf != "Select...":
-            
-            # Fetch current stock for selected combination
-            match_df = rill_df[
-                (rill_df["Size"].astype(str).str.strip() == selected_size) &
-                (rill_df["GSM"].astype(str).str.strip() == selected_gsm) &
-                (rill_df["BF"].astype(str).str.strip() == selected_bf)
-            ]
+    # --- SIZE INPUT ---
+    with col_s1:
+        sel_sz = st.selectbox(
+            "Size *",
+            options=["Select Size...", "➕ Add New..."] + avail_sizes,
+            key=f"sheet_sz_{key_suffix_rill}",
+        )
+        if sel_sz == "➕ Add New...":
+            final_size = st.text_input("Type New Size *", key=f"new_sz_{key_suffix_rill}")
+        else:
+            final_size = sel_sz if sel_sz != "Select Size..." else ""
 
-            if not match_df.empty:
-                curr_qty = int(pd.to_numeric(match_df["Quantity"]).sum())
-                curr_weight = float(pd.to_numeric(match_df["Weight"]).sum())
-                curr_breakup = str(match_df.iloc[0]["Breakup_Weight"])
-                
-                st.success(f"⚡ **Current Stock:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg")
-            else:
-                curr_qty, curr_weight, curr_breakup = 0, 0.0, ""
-                st.warning("No existing stock found for this combination. Proceed carefully.")
+    # --- GSM INPUT ---
+    with col_s2:
+        sel_gsm = st.selectbox(
+            "GSM *",
+            options=["Select GSM...", "➕ Add New..."] + avail_gsms,
+            key=f"sheet_gsm_{key_suffix_rill}",
+        )
+        if sel_gsm == "➕ Add New...":
+            final_gsm = st.text_input("Type New GSM *", key=f"new_gsm_{key_suffix_rill}")
+        else:
+            final_gsm = sel_gsm if sel_gsm != "Select GSM..." else ""
+
+    # --- BF INPUT ---
+    with col_s3:
+        sel_bf = st.selectbox(
+            "BF *",
+            options=["Select BF...", "➕ Add New..."] + avail_bfs,
+            key=f"sheet_bf_{key_suffix_rill}",
+        )
+        if sel_bf == "➕ Add New...":
+            final_bf = st.text_input("Type New BF *", key=f"new_bf_{key_suffix_rill}")
+        else:
+            final_bf = sel_bf if sel_bf != "Select BF..." else ""
+
+    # Validate that every single field has been either selected or typed
+    has_unselected = not (final_size and final_gsm and final_bf)
+
+    if has_unselected:
+        st.info("👆 Please select or type all details to proceed.")
+    else:
+        # Check if this exact combination already exists in the master sheet
+        match_df = rill_df[
+            (rill_df["Size"].astype(str).str.strip() == final_size.strip()) &
+            (rill_df["GSM"].astype(str).str.strip() == final_gsm.strip()) &
+            (rill_df["BF"].astype(str).str.strip() == final_bf.strip())
+        ]
+
+        # ==========================================
+        # MODE A: UPDATE EXISTING STOCK
+        # ==========================================
+        if not match_df.empty:
+            curr_qty = int(pd.to_numeric(match_df["Quantity"]).sum())
+            curr_weight = float(pd.to_numeric(match_df["Weight"]).sum())
+            curr_breakup = str(match_df.iloc[0]["Breakup_Weight"])
+
+            st.success(
+                f"📌 **Selected Spec:** {final_size} Size | {final_gsm} GSM | {final_bf} BF  \n"
+                f"⚡ **Current Stock:** {curr_qty} Rolls | **Weight:** {curr_weight:.2f} kg"
+            )
 
             action_type = st.radio("Transaction Type", ["Purchased (+)", "Used (-)"], horizontal=True)
 
@@ -1486,20 +1491,9 @@ with tab_entry:
 
             col_m4, col_m5, col_m6 = st.columns([1.5, 1.5, 3])
             with col_m4:
-                qty_change = st.number_input(
-                    "Qty (Rills) *", 
-                    min_value=0, 
-                    step=1, 
-                    key=f"q_mod_{key_suffix_rill}"
-                )
+                qty_change = st.number_input("Qty (Rills) *", min_value=0, step=1, key=f"q_mod_{key_suffix_rill}")
             with col_m5:
-                weight_change = st.number_input(
-                    "Total Weight (kg) *", 
-                    min_value=0.0, 
-                    step=0.1, 
-                    format="%.2f", 
-                    key=f"w_mod_{key_suffix_rill}"
-                )
+                weight_change = st.number_input("Total Weight (kg) *", min_value=0.0, step=0.1, format="%.2f", key=f"w_mod_{key_suffix_rill}")
             with col_m6:
                 new_remark = st.text_input("Remark", value="", key=f"r_mod_{key_suffix_rill}")
 
@@ -1522,9 +1516,9 @@ with tab_entry:
                         "action": "update_stock",
                         "date": txn_date.strftime("%d/%m/%Y"),
                         "type": "Purchased" if action_type == "Purchased (+)" else "Used",
-                        "size": selected_size,
-                        "gsm": selected_gsm,
-                        "bf": selected_bf,
+                        "size": final_size.strip(),
+                        "gsm": final_gsm.strip(),
+                        "bf": final_bf.strip(),
                         "qty_change": int(qty_change),
                         "weight_change": float(weight_change),
                         "new_qty": int(final_qty),
@@ -1534,87 +1528,65 @@ with tab_entry:
                         "remark": new_remark.strip()
                     }
                     send_update_to_sheet(payload)
+
+        # ==========================================
+        # MODE B: ADD NEW ITEM
+        # ==========================================
         else:
-            st.info("👆 Please select Size, GSM, and BF to update stock.")
+            st.warning("💡 **New Combination Detected:** Create this new specification below.")
+            st.markdown("##### 📝 Initial Stock Entry for New Specification")
 
+            col_n1, col_n2 = st.columns([1.5, 4.5])
+            with col_n1:
+                txn_date = st.date_input("Date", value=date.today(), key=f"dt_new_{key_suffix_rill}")
+            with col_n2:
+                raw_breakup_new = st.text_input(
+                    "Breakup Weight Entry (kg)", 
+                    placeholder="e.g. 25.5, 30.0, 28.2", 
+                    help="Optional: Enter initial weights separated by commas.",
+                    key=f"bk_new_{key_suffix_rill}",
+                    on_change=sync_new_breakup
+                )
 
-    # ==========================================
-    # MODE B: ADD NEW ITEM
-    # ==========================================
-    else:
-        st.markdown("##### 📝 Create New Item Specification")
-        
-        col_f1, col_f2, col_f3 = st.columns(3)
-        with col_f1:
-            final_size = st.text_input("Size *", key=f"in_sz_{key_suffix_rill}")
-        with col_f2:
-            final_gsm = st.text_input("GSM *", key=f"in_gsm_{key_suffix_rill}")
-        with col_f3:
-            final_bf = st.text_input("BF *", key=f"in_bf_{key_suffix_rill}")
+            _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
 
-        col_n1, col_n2 = st.columns([1.5, 4.5])
-        with col_n1:
-            txn_date = st.date_input("Date", value=date.today(), key=f"dt_new_{key_suffix_rill}")
-        with col_n2:
-            raw_breakup_new = st.text_input(
-                "Breakup Weight Entry (kg)", 
-                placeholder="e.g. 25.5, 30.0, 28.2", 
-                help="Optional: Enter initial weights separated by commas.",
-                key=f"bk_new_{key_suffix_rill}",
-                on_change=sync_new_breakup
-            )
+            if f"q_new_{key_suffix_rill}" not in st.session_state:
+                st.session_state[f"q_new_{key_suffix_rill}"] = 0
+            if f"w_new_{key_suffix_rill}" not in st.session_state:
+                st.session_state[f"w_new_{key_suffix_rill}"] = 0.0
 
-        _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
+            col_n3, col_n4, col_n5 = st.columns([1.5, 1.5, 3])
+            with col_n3:
+                new_initial_qty = st.number_input("Initial Quantity *", min_value=0, step=1, key=f"q_new_{key_suffix_rill}")
+            with col_n4:
+                new_weight = st.number_input("Initial Weight (kg) *", min_value=0.0, step=0.1, format="%.2f", key=f"w_new_{key_suffix_rill}")
+            with col_n5:
+                new_remark_text = st.text_input("Remark", key=f"r_new_{key_suffix_rill}")
 
-        if f"q_new_{key_suffix_rill}" not in st.session_state:
-            st.session_state[f"q_new_{key_suffix_rill}"] = 0
-        if f"w_new_{key_suffix_rill}" not in st.session_state:
-            st.session_state[f"w_new_{key_suffix_rill}"] = 0.0
+            if st.button("Save New Stock Item", type="primary", key="btn_add_new_rill"):
+                clean_size, clean_gsm, clean_bf = final_size.strip(), final_gsm.strip(), final_bf.strip()
 
-        col_n3, col_n4, col_n5 = st.columns([1.5, 1.5, 3])
-        with col_n3:
-            new_initial_qty = st.number_input(
-                "Initial Quantity *", 
-                min_value=0, 
-                step=1, 
-                key=f"q_new_{key_suffix_rill}"
-            )
-        with col_n4:
-            new_weight = st.number_input(
-                "Initial Weight (kg) *", 
-                min_value=0.0, 
-                step=0.1, 
-                format="%.2f", 
-                key=f"w_new_{key_suffix_rill}"
-            )
-        with col_n5:
-            new_remark_text = st.text_input("Remark", key=f"r_new_{key_suffix_rill}")
-
-        if st.button("Save New Stock Item", type="primary", key="btn_add_new_rill"):
-            clean_size, clean_gsm, clean_bf = final_size.strip(), final_gsm.strip(), final_bf.strip()
-
-            if not clean_size or not clean_gsm or not clean_bf:
-                st.warning("Please fill in Size, GSM, and BF.")
-            else:
-                payload = {
-                    "action": "add_new",
-                    "date": txn_date.strftime("%d/%m/%Y"),
-                    "type": "Purchased",
-                    "size": clean_size,
-                    "gsm": clean_gsm,
-                    "bf": clean_bf,
-                    "qty": int(new_initial_qty),
-                    "weight": float(new_weight),
-                    "qty_change": int(new_initial_qty),
-                    "weight_change": float(new_weight),
-                    "new_qty": int(new_initial_qty),
-                    "new_weight": float(new_weight),
-                    "breakup_weight": clean_breakup_new,
-                    "new_breakup_weight": clean_breakup_new,
-                    "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -")
-                }
-                
-                send_update_to_sheet(payload)
+                if not clean_size or not clean_gsm or not clean_bf:
+                    st.warning("Please fill in Size, GSM, and BF.")
+                else:
+                    payload = {
+                        "action": "add_new",
+                        "date": txn_date.strftime("%d/%m/%Y"),
+                        "type": "Purchased",
+                        "size": clean_size,
+                        "gsm": clean_gsm,
+                        "bf": clean_bf,
+                        "qty": int(new_initial_qty),
+                        "weight": float(new_weight),
+                        "qty_change": int(new_initial_qty),
+                        "weight_change": float(new_weight),
+                        "new_qty": int(new_initial_qty),
+                        "new_weight": float(new_weight),
+                        "breakup_weight": clean_breakup_new,
+                        "new_breakup_weight": clean_breakup_new,
+                        "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -")
+                    }
+                    send_update_to_sheet(payload)
 
     st.markdown("### 📋 Current Stock Summary")
     st.dataframe(rill_df, use_container_width=True, hide_index=True)
@@ -1650,43 +1622,20 @@ with tab_history:
         filtered_df["Breakup_Weight"] = filtered_df["Breakup_Weight"].astype(str).replace("nan", "").str.strip()
         filtered_df["Remark"] = filtered_df["Remark"].astype(str).replace("nan", "").str.strip()
 
-        parsed_dates = pd.to_datetime(
-            filtered_df["Date"], 
-            dayfirst=True, 
-            format="mixed", 
-            errors="coerce"
-        ).dt.date
-
+        parsed_dates = pd.to_datetime(filtered_df["Date"], dayfirst=True, format="mixed", errors="coerce").dt.date
         valid_dates = parsed_dates.dropna()
         min_date = valid_dates.min() if not valid_dates.empty else date.today()
         max_date = valid_dates.max() if not valid_dates.empty else date.today()
 
         col_h1, col_h2, col_h3, col_h4 = st.columns(4)
-        
         with col_h1:
-            date_range = st.date_input(
-                "Filter Date Range",
-                value=(min_date, max_date),
-                key=f"rill_hist_filter_date_{key_suffix_rill}"
-            )
+            date_range = st.date_input("Filter Date Range", value=(min_date, max_date), key=f"rill_hist_filter_date_{key_suffix_rill}")
         with col_h2:
-            filter_type = st.multiselect(
-                "Filter Action Type", 
-                options=["Purchased", "Used"], 
-                default=["Purchased", "Used"],
-                key=f"rill_hist_filter_type_{key_suffix_rill}"
-            )
+            filter_type = st.multiselect("Filter Action Type", options=["Purchased", "Used"], default=["Purchased", "Used"], key=f"rill_hist_filter_type_{key_suffix_rill}")
         with col_h3:
-            filter_size = st.multiselect(
-                "Filter Size", 
-                options=sorted(filtered_df["Size"].unique()),
-                key=f"rill_hist_filter_size_{key_suffix_rill}"
-            )
+            filter_size = st.multiselect("Filter Size", options=sorted(filtered_df["Size"].unique()), key=f"rill_hist_filter_size_{key_suffix_rill}")
         with col_h4:
-            search_text = st.text_input(
-                "Search Remarks/Breakups/Specs",
-                key=f"rill_hist_search_{key_suffix_rill}"
-            )
+            search_text = st.text_input("Search Remarks/Breakups/Specs", key=f"rill_hist_search_{key_suffix_rill}")
 
         if date_range:
             if isinstance(date_range, (tuple, list)):
@@ -1746,7 +1695,6 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
-
 
 
 ####################################### Paper Sheet Stock ######################################
