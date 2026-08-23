@@ -2138,3 +2138,100 @@ with tab_history:
             use_container_width=True,
             hide_index=True,
         )
+
+
+# ==========================================
+# 🔗 PASTE YOUR APPS SCRIPT WEB APP URL HERE
+# ==========================================
+PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
+
+st.subheader("🛒 Purchase Order Entry & Verification")
+
+# List of Creditors
+CREDITORS_LIST = [
+    "Select Creditor...",
+    "BALAJI ENTERPRISE",
+    "DHANUKA UDYOG PRIVATE LIMITED",
+    "EVEREST PAPER MILLS (P) LTD.",
+    "KRISHNA TRADERS",
+    "PAPERS (India)",
+    "PS INDUSTRIES",
+    "Reflection Papers Pvt. Ltd.",
+    "RIPCO TRADERS PVT. LTD.",
+    "RM INDUSTRIAL EQUIPMENTS",
+    "Samir Board World",
+    "SHIV SHAKTI TRADERS",
+    "Shree Durga Trading Co.",
+    "Star Trading Corporation",
+    "STARK RIDGE PAPER PVT LTD",
+    "The Synthetic Glue & Chemical Industries",
+    "VIJAY ENTERPRISE"
+]
+
+# --- ORDER ENTRY FORM ---
+with st.container(border=True):
+    st.markdown("#### 1. Order Details")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST)
+        order_date = st.date_input("Order Date", value=date.today())
+    with col2:
+        product_desc = st.text_input("Product Description *", placeholder="e.g., Kraft Paper 120 GSM")
+    
+    col3, col4, col5 = st.columns(3)
+    with col3:
+        rate = st.number_input("Rate per Unit (₹)", min_value=0.0, step=1.0, format="%.2f")
+    with col4:
+        quantity = st.number_input("Quantity", min_value=0.0, step=1.0)
+    with col5:
+        total_amount = rate * quantity
+        st.metric(label="Total Order Amount (₹)", value=f"₹ {total_amount:,.2f}")
+
+# --- INVOICE VERIFICATION SECTION ---
+st.markdown("---")
+with st.container(border=True):
+    st.markdown("#### 2. Invoice & Delivery Verification")
+    
+    order_status = st.radio(
+        "Current Order Status:",
+        ["⏳ Pending Delivery", "✅ Verified (Rate, Qty & Product Match)", "❌ Cancelled"],
+        horizontal=True
+    )
+    
+    cancel_reason = ""
+    if order_status == "❌ Cancelled":
+        cancel_reason = st.text_input("Reason for Cancellation", placeholder="e.g., Poor quality, late delivery...")
+        st.error("Order marked as Cancelled.")
+    elif order_status == "✅ Verified (Rate, Qty & Product Match)":
+        st.success("Invoice verified and ready for ledger entry!")
+
+    # --- SUBMIT BUTTON & SEND DATA ---
+    if st.button("Save Order Record", type="primary"):
+        if creditor == "Select Creditor..." or not product_desc:
+            st.warning("Please fill in the Creditor and Product Description.")
+        else:
+            # Package the data
+            payload = {
+                "Date": order_date.strftime("%Y-%m-%d"), # YYYY-MM-DD format for flawless sorting
+                "Creditor": creditor,
+                "Product": product_desc,
+                "Rate": rate,
+                "Quantity": quantity,
+                "Amount": total_amount,
+                "Status": order_status,
+                "CancellationReason": cancel_reason
+            }
+            
+            try:
+                with st.spinner("Saving to Google Sheets..."):
+                    # Send data to Apps Script
+                    response = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
+                    
+                    if response.status_code == 200:
+                        st.toast("✅ Record saved successfully!")
+                        st.success(f"Order for {creditor} has been recorded.")
+                    else:
+                        st.error("⚠️ Failed to save record. Check your Web App URL.")
+            except Exception as e:
+                st.error(f"❌ Error connecting to Google Sheets: {e}")
