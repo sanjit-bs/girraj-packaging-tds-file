@@ -1942,15 +1942,13 @@ with tab_entry:
                     st.warning("Please fill in Product, Width, Length, and GSM.")
                 else:
                     payload = {
-                        "action": "add_new",
+                        "action": "update_stock",  # CHANGED: Force App Script to use the working update method
                         "date": txn_date.strftime("%d/%m/%Y"),
                         "type": "Purchased",
                         "product": clean_p,
                         "width": clean_w,
                         "length": clean_l,
                         "gsm": clean_g,
-                        "grus": float(new_initial_grus),
-                        "pcs": int(new_initial_pcs),
                         "grus_change": float(new_initial_grus),
                         "pcs_change": int(new_initial_pcs),
                         "new_grus": float(new_initial_grus),
