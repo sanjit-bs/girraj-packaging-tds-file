@@ -1742,18 +1742,17 @@ key_suffix = st.session_state.form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Transaction", "📜 Stock & History Log"])
 
 # ------------------------------------------------------
-# TAB 1: RECORD TRANSACTION WITH AUTO-SELECTION
+# TAB 1: RECORD TRANSACTION WITH UNIFORM COLUMN WIDTHS
 # ------------------------------------------------------
 with tab_entry:
     st.markdown("##### 🔍 Product & Specifications Selection")
 
     avail_p = sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
-    sel_p = st.selectbox("Product", options=["Select Product...", "➕ Add New..."] + avail_p, key=f"p_{key_suffix}")
-
     # Auto-filter dependent options based on selected Product
-    if sel_p not in ["Select Product...", "➕ Add New..."]:
-        matched_specs = sheet_df[sheet_df["Product"].astype(str).str.strip() == sel_p.strip()]
+    if f"p_sel_{key_suffix}" in st.session_state and st.session_state[f"p_sel_{key_suffix}"] not in ["Select Product...", "➕ Add New..."]:
+        selected_product = st.session_state[f"p_sel_{key_suffix}"]
+        matched_specs = sheet_df[sheet_df["Product"].astype(str).str.strip() == selected_product.strip()]
         avail_w = sorted(list(set(matched_specs["Width"].astype(str).str.strip().unique())))
         avail_l = sorted(list(set(matched_specs["Length"].astype(str).str.strip().unique())))
         avail_g = sorted(list(set(matched_specs["GSM"].astype(str).str.strip().unique())))
@@ -1762,9 +1761,11 @@ with tab_entry:
         avail_l = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
         avail_g = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
+    # Uniform 4-Column Layout
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
+        sel_p = st.selectbox("Product", options=["Select Product...", "➕ Add New..."] + avail_p, key=f"p_sel_{key_suffix}")
         final_p = st.text_input("New Product Name", key=f"np_{key_suffix}") if sel_p == "➕ Add New..." else (sel_p if sel_p != "Select Product..." else "")
 
     with col_s1:
@@ -1855,12 +1856,10 @@ with tab_history:
     else:
         filtered_df = history_df.copy()
 
-        # Clean string formats for uniform filtering
         for col in ["Product", "Width", "Length", "GSM", "Type", "Remark"]:
             if col in filtered_df.columns:
                 filtered_df[col] = filtered_df[col].astype(str).str.strip()
 
-        # Field-Wise Filter Inputs
         with st.expander("🔍 Column Filter Controls", expanded=True):
             f_col1, f_col2, f_col3, f_col4 = st.columns(4)
             with f_col1:
@@ -1872,15 +1871,16 @@ with tab_history:
             with f_col4:
                 f_length = st.multiselect("Filter Length", options=sorted(filtered_df["Length"].unique()), key=f"f_l_{key_suffix}")
 
-            f_col5, f_col6, f_col7 = st.columns([1, 1, 2])
+            f_col5, f_col6, f_col7, f_col8 = st.columns(4)
             with f_col5:
                 f_gsm = st.multiselect("Filter GSM", options=sorted(filtered_df["GSM"].unique()), key=f"f_gsm_{key_suffix}")
             with f_col6:
                 search_remark = st.text_input("Filter Remark", key=f"f_rm_{key_suffix}")
             with f_col7:
-                search_global = st.text_input("Global Keyword Search", key=f"f_glob_{key_suffix}")
+                search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
+            with f_col8:
+                st.write("")  # Blank column maintaining strict 4-column symmetry
 
-        # Applying Filters
         if f_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(f_type)]
         if f_prod:
