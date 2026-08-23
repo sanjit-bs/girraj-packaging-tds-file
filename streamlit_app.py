@@ -2154,8 +2154,8 @@ CREDITORS_LIST = [
     "The Synthetic Glue & Chemical Industries", "VIJAY ENTERPRISE"
 ]
 
-st.set_page_config(page_title="Purchase Order Manager", layout="wide")
-st.title("📦 Purchase Order & Verification System")
+st.markdown("---")
+st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
 
 tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
 
