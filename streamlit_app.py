@@ -1666,54 +1666,55 @@ with tab_history:
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFiTY2W44BRhicfK7nTxEk5aOVQjNMIcq8wj3fUct_kMfdzkfxcsUpda0isAt6b_mY/exec"
 
 COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"]
-COLUMNS_HISTORY = [
-    "Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"
-]
+COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"]
 
 # ------------------------------------------------------
-# Helper Functions & Formatting Normalizers
+# Helpers: Quantity Synchronization Callbacks
 # ------------------------------------------------------
-def parse_num(val):
-    """Converts string inputs into clean floats/ints to avoid JS type-matching bugs."""
-    try:
-        f = float(val)
-        return int(f) if f.is_integer() else round(f, 2)
-    except (ValueError, TypeError):
-        return str(val).strip()
-
 def sync_mod_grus():
-    """Callback to calculate Pcs from Grus (Grus * 144)."""
-    key_suf = st.session_state.get("sheet_form_key", 0)
-    grus_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
-    st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(grus_val * 144))
+    """Callback to calculate Pcs from Grus (Grus * 144) for Existing Stock updates"""
+    key_suf = st.session_state.form_key
+    g_val = st.session_state.get(f"g_mod_{key_suf}", 0.0)
+    st.session_state[f"pcs_mod_{key_suf}"] = int(round(g_val * 144))
 
 def sync_mod_pcs():
-    """Callback to calculate Grus from Pcs (Pcs / 144)."""
-    key_suf = st.session_state.get("sheet_form_key", 0)
-    pcs_val = st.session_state.get(f"sheet_pcs_mod_{key_suf}", 0)
-    st.session_state[f"sheet_g_mod_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
+    """Callback to calculate Grus from Pcs (Pcs / 144) for Existing Stock updates"""
+    key_suf = st.session_state.form_key
+    pcs_val = st.session_state.get(f"pcs_mod_{key_suf}", 0)
+    st.session_state[f"g_mod_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
 
+def sync_new_grus():
+    """Callback to calculate Pcs from Grus (Grus * 144) for New Stock additions"""
+    key_suf = st.session_state.form_key
+    g_val = st.session_state.get(f"g_new_{key_suf}", 0.0)
+    st.session_state[f"pcs_new_{key_suf}"] = int(round(g_val * 144))
+
+def sync_new_pcs():
+    """Callback to calculate Grus from Pcs (Pcs / 144) for New Stock additions"""
+    key_suf = st.session_state.form_key
+    pcs_val = st.session_state.get(f"pcs_new_{key_suf}", 0)
+    st.session_state[f"g_new_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
+
+# ------------------------------------------------------
+# Load Data via Apps Script
+# ------------------------------------------------------
 @st.cache_data(ttl=5)
-def fetch_all_sheet_data():
+def fetch_all_data():
     try:
-        response = requests.get(
-            f"{APPS_SCRIPT_URL}?action=read_all",
-            allow_redirects=True,
-            timeout=30,
-        )
-
+        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", allow_redirects=True, timeout=30)
+        
         if "text/html" in response.headers.get("Content-Type", ""):
-            st.error("⚠️ Ensure Web App access is set to 'Anyone'.")
+            st.error("⚠️ Google returned HTML instead of JSON. Ensure Web App access is set to 'Anyone'.")
             return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
         data = response.json()
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
-
+        
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
                 master_df[col] = 0 if col in ["Grus", "Pcs"] else ""
-
+                
         for col in COLUMNS_HISTORY:
             if col not in history_df.columns:
                 history_df[col] = 0 if col in ["Grus", "Pcs"] else ""
@@ -1721,62 +1722,37 @@ def fetch_all_sheet_data():
         return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
 
     except Exception as e:
-        st.error(f"Error connecting to Sheet API: {e}")
+        st.error(f"Error connecting to Apps Script API: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
-def clean_master_stock(master_df):
-    """Cleans and standardizes the direct sheet_stock data for accurate display."""
-    if master_df.empty:
-        return pd.DataFrame(columns=COLUMNS_MASTER)
-    
-    df = master_df.copy()
-    for col in ["Product", "Width", "Length", "GSM"]:
-        if col in df.columns:
-            df[col] = df[col].apply(parse_num)
-            
-    df["Grus"] = pd.to_numeric(df["Grus"], errors="coerce").fillna(0.0).round(2)
-    df["Pcs"] = pd.to_numeric(df["Pcs"], errors="coerce").fillna(0).astype(int)
-    return df
-
-def calculate_current_stock(live_df, product, width, length, gsm):
-    """Looks up current stock directly from the cleaned sheet_stock data."""
-    if live_df.empty:
-        return 0.0, 0
-    
-    mask = (
-        (live_df["Product"].astype(str).str.lower() == str(product).strip().lower()) &
-        (live_df["Width"].astype(str).str.lower() == str(width).strip().lower()) &
-        (live_df["Length"].astype(str).str.lower() == str(length).strip().lower()) &
-        (live_df["GSM"].astype(str).str.lower() == str(gsm).strip().lower())
-    )
-    
-    sub = live_df[mask]
-    if sub.empty:
-        return 0.0, 0
-        
-    return float(sub["Grus"].sum()), int(sub["Pcs"].sum())
-
-def send_sheet_update(payload):
+# ------------------------------------------------------
+# Submit Record via Apps Script
+# ------------------------------------------------------
+def send_update_to_sheet(payload):
     try:
-        res = requests.post(
-            APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15
-        )
+        res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15)
+        
+        if "text/html" in res.headers.get("Content-Type", ""):
+            st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
+            return
+
         res_data = res.json()
+        
         if res_data.get("status") == "success":
-            st.toast("✅ Recorded successfully!")
+            st.toast("✅ Updated successfully!")
             st.cache_data.clear()
-            st.session_state.sheet_form_key += 1
+            st.session_state.form_key += 1
             st.rerun()
         else:
             st.error(f"❌ Apps Script Error: {res_data.get('message', 'Unknown Error')}")
+
     except Exception as e:
         st.error(f"Failed to send update: {e}")
 
-# ==========================================
-# FETCH DATA & CONNECT TO SHEET_STOCK
-# ==========================================
-sheet_df, sheet_history_df = fetch_all_sheet_data()
-live_stock_df = clean_master_stock(sheet_df)  # Directly using sheet_stock now!
+# ------------------------------------------------------
+# Main Application Flow
+# ------------------------------------------------------
+sheet_df, history_df = fetch_all_data()
 
 st.markdown("---")
 st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
@@ -1784,155 +1760,220 @@ st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
 with st.expander("📐 Quick CM to Inches Converter"):
     col_cm1, col_cm2 = st.columns(2)
     with col_cm1:
-        h_cm = st.number_input("Width (CM)", min_value=0.0, step=0.1, format="%.2f", key="standalone_h_cm_converter")
+        w_cm = st.number_input("Enter Width in CM", min_value=0.0, step=0.1, format="%.2f", key="standalone_w_cm_converter")
     with col_cm2:
-        w_cm = st.number_input("Length (CM)", min_value=0.0, step=0.1, format="%.2f", key="standalone_w_cm_converter")
-    if h_cm > 0 or w_cm > 0:
-        h_inch = round(h_cm / 2.54, 2)
+        l_cm = st.number_input("Enter Length in CM", min_value=0.0, step=0.1, format="%.2f", key="standalone_l_cm_converter")
+    if w_cm > 0 or l_cm > 0:
         w_inch = round(w_cm / 2.54, 2)
-        st.success(f"**Converted Dimensions:** {h_inch:.2f}″ (W) × {w_inch:.2f}″ (L)\n\n*Original:* {h_cm:.2f} cm × {w_cm:.2f} cm")
+        l_inch = round(l_cm / 2.54, 2)
+        st.success(f"**Converted Dimensions:** {w_inch:.2f}″ (W) × {l_inch:.2f}″ (L)\n\n*Original:* {w_cm:.2f} cm × {l_cm:.2f} cm")
 
-if "sheet_form_key" not in st.session_state:
-    st.session_state.sheet_form_key = 0
-key_suffix = st.session_state.sheet_form_key
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
+key_suffix_sheet = st.session_state.form_key
 
 tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 
+# ------------------------------------------------------
+# Tab 1: Record Entry
+# ------------------------------------------------------
 with tab_entry:
-    st.markdown("##### 🔍 Select Product (Auto-Fills Details or Add New)")
+    st.markdown("##### 🔍 Select Product Specifications (Auto-Fills Details or Add New)")
 
-    all_p = pd.concat([live_stock_df["Product"], sheet_history_df["Product"]]).astype(str).str.strip()
-    unique_products = sorted(list(set([p for p in all_p if p and p.lower() != 'nan'])))
-
-    def on_product_change():
-        p_val = st.session_state.get(f"sheet_p_{key_suffix}")
-        if p_val and p_val not in ["Select Product...", "➕ Add New..."]:
-            sub_df = live_stock_df[live_stock_df["Product"].astype(str).str.strip().str.lower() == p_val.strip().lower()]
-            if not sub_df.empty:
-                first_row = sub_df.iloc[0]
-                st.session_state[f"sheet_w_{key_suffix}"] = str(parse_num(first_row["Width"]))
-                st.session_state[f"sheet_l_{key_suffix}"] = str(parse_num(first_row["Length"]))
-                st.session_state[f"sheet_g_{key_suffix}"] = str(parse_num(first_row["GSM"]))
-        else:
-            st.session_state[f"sheet_w_{key_suffix}"] = "Select Width..."
-            st.session_state[f"sheet_l_{key_suffix}"] = "Select Length..."
-            st.session_state[f"sheet_g_{key_suffix}"] = "Select GSM..."
+    avail_products = sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
+    avail_widths = sorted(list(set(sheet_df["Width"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
+    avail_lengths = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
+    avail_gsms = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
-        sel_p = st.selectbox("Product *", options=["Select Product...", "➕ Add New..."] + unique_products, key=f"sheet_p_{key_suffix}", on_change=on_product_change)
-        final_p = st.text_input("Type New Product *", key=f"new_p_{key_suffix}") if sel_p == "➕ Add New..." else (sel_p if sel_p != "Select Product..." else "")
-
-    if final_p and sel_p != "➕ Add New...":
-        sub_df = live_stock_df[live_stock_df["Product"].astype(str).str.strip().str.lower() == final_p.strip().lower()]
-        avail_widths = sorted(list(set(sub_df["Width"].apply(parse_num).astype(str).unique())))
-        avail_lengths = sorted(list(set(sub_df["Length"].apply(parse_num).astype(str).unique())))
-        avail_gsms = sorted(list(set(sub_df["GSM"].apply(parse_num).astype(str).unique())))
-    else:
-        avail_widths, avail_lengths, avail_gsms = [], [], []
+        sel_p = st.selectbox("Product *", options=["Select Product...", "➕ Add New..."] + avail_products, key=f"sheet_p_{key_suffix_sheet}")
+        if sel_p == "➕ Add New...":
+            final_p = st.text_input("Type New Product *", key=f"new_p_{key_suffix_sheet}")
+        else:
+            final_p = sel_p if sel_p != "Select Product..." else ""
 
     with col_s1:
-        sel_w = st.selectbox("Width *", options=["Select Width...", "➕ Add New..."] + avail_widths, key=f"sheet_w_{key_suffix}")
-        final_w = st.text_input("Type New Width *", key=f"new_w_{key_suffix}") if sel_w == "➕ Add New..." else (sel_w if sel_w != "Select Width..." else "")
+        sel_w = st.selectbox("Width *", options=["Select Width...", "➕ Add New..."] + avail_widths, key=f"sheet_w_{key_suffix_sheet}")
+        if sel_w == "➕ Add New...":
+            final_w = st.text_input("Type New Width *", key=f"new_w_{key_suffix_sheet}")
+        else:
+            final_w = sel_w if sel_w != "Select Width..." else ""
 
     with col_s2:
-        sel_l = st.selectbox("Length *", options=["Select Length...", "➕ Add New..."] + avail_lengths, key=f"sheet_l_{key_suffix}")
-        final_l = st.text_input("Type New Length *", key=f"new_l_{key_suffix}") if sel_l == "➕ Add New..." else (sel_l if sel_l != "Select Length..." else "")
+        sel_l = st.selectbox("Length *", options=["Select Length...", "➕ Add New..."] + avail_lengths, key=f"sheet_l_{key_suffix_sheet}")
+        if sel_l == "➕ Add New...":
+            final_l = st.text_input("Type New Length *", key=f"new_l_{key_suffix_sheet}")
+        else:
+            final_l = sel_l if sel_l != "Select Length..." else ""
 
     with col_s3:
-        sel_g = st.selectbox("GSM *", options=["Select GSM...", "➕ Add New..."] + avail_gsms, key=f"sheet_g_{key_suffix}")
-        final_g = st.text_input("Type New GSM *", key=f"new_g_{key_suffix}") if sel_g == "➕ Add New..." else (sel_g if sel_g != "Select GSM..." else "")
+        sel_g = st.selectbox("GSM *", options=["Select GSM...", "➕ Add New..."] + avail_gsms, key=f"sheet_g_{key_suffix_sheet}")
+        if sel_g == "➕ Add New...":
+            final_g = st.text_input("Type New GSM *", key=f"new_g_{key_suffix_sheet}")
+        else:
+            final_g = sel_g if sel_g != "Select GSM..." else ""
 
     has_unselected = not (final_p and final_w and final_l and final_g)
 
     if has_unselected:
         st.info("👆 Please select or type all details to proceed.")
-
-    if not has_unselected:
-        curr_grus, curr_pcs = calculate_current_stock(live_stock_df, final_p, final_w, final_l, final_g)
-
-        st.success(f"📌 **Selected Spec:** {final_p} | {final_w} × {final_l} | {final_g} GSM  \n⚡ **Current Stock (from sheet_stock):** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs")
-
-        col_m1, col_m2 = st.columns([1.5, 2.5])
-        with col_m1:
-            txn_date = st.date_input("Date", value=date.today(), key=f"sheet_dt_mod_{key_suffix}")
-        with col_m2:
-            action_type = st.radio("Action *", options=["Purchased (+)", "Used (-)"], horizontal=True, key=f"sheet_act_{key_suffix}")
-
-        if f"sheet_g_mod_{key_suffix}" not in st.session_state:
-            st.session_state[f"sheet_g_mod_{key_suffix}"] = 0.0
-        if f"sheet_pcs_mod_{key_suffix}" not in st.session_state:
-            st.session_state[f"sheet_pcs_mod_{key_suffix}"] = 0
-
-        col_m3, col_m4, col_m5 = st.columns([2, 2, 3])
-        with col_m3:
-            grus_change = st.number_input(
-                "Grus Quantity *",
-                min_value=0.0,
-                step=0.1,
-                format="%.2f",
-                key=f"sheet_g_mod_{key_suffix}",
-                on_change=sync_mod_grus,
-            )
-        with col_m4:
-            pcs_change = st.number_input(
-                "Pcs (Grus × 144) *",
-                min_value=0,
-                step=1,
-                key=f"sheet_pcs_mod_{key_suffix}",
-                on_change=sync_mod_pcs,
-            )
-        with col_m5:
-            new_remark = st.text_input("Remark", value="", key=f"sheet_r_mod_{key_suffix}")
-
-        if st.button("Submit History Record", type="primary", key="btn_update_sheet"):
-            if action_type == "Used (-)" and grus_change > curr_grus:
-                st.warning(f"Cannot subtract {grus_change:.2f} Grus! Available stock is only {curr_grus:.2f} Grus.")
-            elif grus_change == 0 and pcs_change == 0:
-                st.warning("Please enter a non-zero Grus or Pcs value.")
-            else:
-                # Transmit parsed parameters so the Apps Script finds the row perfectly
-                payload = {
-                    "action": "update_stock",
-                    "date": txn_date.strftime("%d/%m/%Y"),
-                    "type": "Purchased" if action_type == "Purchased (+)" else "Used",
-                    "product": str(final_p).strip(),  
-                    "width": parse_num(final_w),    
-                    "length": parse_num(final_l),   
-                    "gsm": parse_num(final_g),      
-                    "grus_change": float(grus_change),
-                    "pcs_change": int(pcs_change),
-                    "remark": new_remark.strip(),
-                }
-                send_sheet_update(payload)
-
-    # ==========================================
-    # DISPLAY ACTUAL SHEET_STOCK INVENTORY 
-    # ==========================================
-    st.markdown("### 📊 Live Stock Ledger (Directly from `sheet_stock`)")
-    st.dataframe(
-        live_stock_df, 
-        use_container_width=True, 
-        hide_index=True,
-        column_config={
-            "Grus": st.column_config.NumberColumn("Total Grus", format="%.2f"),
-            "Pcs": st.column_config.NumberColumn("Total Pcs", format="%d")
-        }
-    )
-
-with tab_history:
-    st.markdown("### 📜 Date-Wise Sheet Record History Log")
-
-    if sheet_history_df.empty:
-        st.info("No sheet record history available yet.")
     else:
-        filtered_df = sheet_history_df.copy()
+        match_df = sheet_df[
+            (sheet_df["Product"].astype(str).str.strip() == final_p.strip()) &
+            (sheet_df["Width"].astype(str).str.strip() == final_w.strip()) &
+            (sheet_df["Length"].astype(str).str.strip() == final_l.strip()) &
+            (sheet_df["GSM"].astype(str).str.strip() == final_g.strip())
+        ]
 
-        for col in COLUMNS_HISTORY:
-            if col not in filtered_df.columns:
-                filtered_df[col] = 0.0 if col in ["Grus", "Pcs"] else ""
+        # ==========================================
+        # MODE A: UPDATE EXISTING STOCK
+        # ==========================================
+        if not match_df.empty:
+            curr_grus = float(pd.to_numeric(match_df["Grus"]).sum())
+            curr_pcs = int(pd.to_numeric(match_df["Pcs"]).sum())
 
+            st.success(
+                f"📌 **Selected Spec:** {final_p} | {final_w} × {final_l} | {final_g} GSM  \n"
+                f"⚡ **Current Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs"
+            )
+
+            action_type = st.radio("Transaction Type", ["Purchased (+)", "Used (-)"], horizontal=True)
+
+            col_m1, col_m2 = st.columns([1.5, 4.5])
+            with col_m1:
+                txn_date = st.date_input("Date", value=date.today(), key=f"dt_mod_{key_suffix_sheet}")
+
+            # Initialize states so the callbacks can safely overwrite them
+            if f"g_mod_{key_suffix_sheet}" not in st.session_state:
+                st.session_state[f"g_mod_{key_suffix_sheet}"] = 0.0
+            if f"pcs_mod_{key_suffix_sheet}" not in st.session_state:
+                st.session_state[f"pcs_mod_{key_suffix_sheet}"] = 0
+
+            col_m3, col_m4, col_m5 = st.columns([2, 2, 3])
+            with col_m3:
+                grus_change = st.number_input(
+                    "Grus Quantity *",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.2f",
+                    key=f"g_mod_{key_suffix_sheet}",
+                    on_change=sync_mod_grus
+                )
+            with col_m4:
+                pcs_change = st.number_input(
+                    "Pcs (Grus × 144) *",
+                    min_value=0,
+                    step=1,
+                    key=f"pcs_mod_{key_suffix_sheet}",
+                    on_change=sync_mod_pcs
+                )
+            with col_m5:
+                new_remark = st.text_input("Remark", value="", key=f"r_mod_{key_suffix_sheet}")
+
+            final_grus = curr_grus + grus_change if action_type == "Purchased (+)" else curr_grus - grus_change
+            final_pcs = curr_pcs + pcs_change if action_type == "Purchased (+)" else curr_pcs - pcs_change
+
+            if st.button("Submit Record", type="primary", key="btn_update_sheet"):
+                if action_type == "Used (-)" and grus_change > curr_grus:
+                    st.warning(f"Cannot subtract {grus_change:.2f} Grus! Available stock is only {curr_grus:.2f} Grus.")
+                elif grus_change == 0 and pcs_change == 0:
+                    st.warning("Please enter a non-zero Grus or Pcs value.")
+                else:
+                    payload = {
+                        "action": "update_stock",
+                        "date": txn_date.strftime("%d/%m/%Y"),
+                        "type": "Purchased" if action_type == "Purchased (+)" else "Used",
+                        "product": final_p.strip(),
+                        "width": final_w.strip(),
+                        "length": final_l.strip(),
+                        "gsm": final_g.strip(),
+                        "grus_change": float(grus_change),
+                        "pcs_change": int(pcs_change),
+                        "new_grus": float(final_grus),
+                        "new_pcs": int(final_pcs),
+                        "remark": new_remark.strip()
+                    }
+                    send_update_to_sheet(payload)
+
+        # ==========================================
+        # MODE B: ADD NEW ITEM
+        # ==========================================
+        else:
+            st.warning("💡 **New Combination Detected:** Create this new specification below.")
+            st.markdown("##### 📝 Initial Stock Entry for New Specification")
+
+            col_n1, col_n2 = st.columns([1.5, 4.5])
+            with col_n1:
+                txn_date = st.date_input("Date", value=date.today(), key=f"dt_new_{key_suffix_sheet}")
+
+            # Initialize states so the callbacks can safely overwrite them
+            if f"g_new_{key_suffix_sheet}" not in st.session_state:
+                st.session_state[f"g_new_{key_suffix_sheet}"] = 0.0
+            if f"pcs_new_{key_suffix_sheet}" not in st.session_state:
+                st.session_state[f"pcs_new_{key_suffix_sheet}"] = 0
+
+            col_n3, col_n4, col_n5 = st.columns([2, 2, 3])
+            with col_n3:
+                new_initial_grus = st.number_input(
+                    "Initial Grus *",
+                    min_value=0.0,
+                    step=0.1,
+                    format="%.2f",
+                    key=f"g_new_{key_suffix_sheet}",
+                    on_change=sync_new_grus
+                )
+            with col_n4:
+                new_initial_pcs = st.number_input(
+                    "Initial Pcs *",
+                    min_value=0,
+                    step=1,
+                    key=f"pcs_new_{key_suffix_sheet}",
+                    on_change=sync_new_pcs
+                )
+            with col_n5:
+                new_remark_text = st.text_input("Remark", key=f"r_new_{key_suffix_sheet}")
+
+            if st.button("Save New Stock Item", type="primary", key="btn_add_new_sheet"):
+                clean_p, clean_w, clean_l, clean_g = final_p.strip(), final_w.strip(), final_l.strip(), final_g.strip()
+
+                if not clean_p or not clean_w or not clean_l or not clean_g:
+                    st.warning("Please fill in Product, Width, Length, and GSM.")
+                else:
+                    payload = {
+                        "action": "add_new",
+                        "date": txn_date.strftime("%d/%m/%Y"),
+                        "type": "Purchased",
+                        "product": clean_p,
+                        "width": clean_w,
+                        "length": clean_l,
+                        "gsm": clean_g,
+                        "grus": float(new_initial_grus),
+                        "pcs": int(new_initial_pcs),
+                        "grus_change": float(new_initial_grus),
+                        "pcs_change": int(new_initial_pcs),
+                        "new_grus": float(new_initial_grus),
+                        "new_pcs": int(new_initial_pcs),
+                        "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -")
+                    }
+                    send_update_to_sheet(payload)
+
+    st.markdown("### 📋 Current Stock Summary")
+    st.dataframe(sheet_df, use_container_width=True, hide_index=True)
+
+# ------------------------------------------------------
+# Tab 2: Record History Log View
+# ------------------------------------------------------
+with tab_history:
+    st.markdown("### 📜 Detailed Record History Log")
+
+    if history_df.empty:
+        st.info("No record history available yet.")
+    else:
+        filtered_df = history_df.copy()
+
+        # Data Cleaning
         filtered_df["Date"] = filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
         filtered_df["Type"] = filtered_df["Type"].astype(str).str.strip()
         filtered_df["Product"] = filtered_df["Product"].astype(str).str.strip()
@@ -1950,17 +1991,16 @@ with tab_history:
         max_date = valid_dates.max() if not valid_dates.empty else date.today()
 
         col_h1, col_h2, col_h3, col_h4, col_h5 = st.columns(5)
-
         with col_h1:
-            date_range = st.date_input("Filter Date Range", value=(min_date, max_date), key=f"sheet_hist_filter_date_{key_suffix}")
+            date_range = st.date_input("Filter Date Range", value=(min_date, max_date), key=f"sheet_hist_filter_date_{key_suffix_sheet}")
         with col_h2:
-            filter_type = st.multiselect("Filter Action Type", options=["Purchased", "Used"], default=["Purchased", "Used"], key=f"sheet_hist_filter_type_{key_suffix}")
+            filter_type = st.multiselect("Filter Action Type", options=["Purchased", "Used"], default=["Purchased", "Used"], key=f"sheet_hist_filter_type_{key_suffix_sheet}")
         with col_h3:
-            filter_product = st.multiselect("Filter Product", options=sorted(filtered_df["Product"].unique()), key=f"sheet_hist_filter_prod_{key_suffix}")
+            filter_product = st.multiselect("Filter Product", options=sorted(filtered_df["Product"].unique()), key=f"sheet_hist_filter_prod_{key_suffix_sheet}")
         with col_h4:
-            filter_gsm = st.multiselect("Filter GSM", options=sorted(filtered_df["GSM"].unique()), key=f"sheet_hist_filter_gsm_{key_suffix}")
+            filter_gsm = st.multiselect("Filter GSM", options=sorted(filtered_df["GSM"].unique()), key=f"sheet_hist_filter_gsm_{key_suffix_sheet}")
         with col_h5:
-            search_text = st.text_input("Search Remarks/Specs", key=f"sheet_hist_search_{key_suffix}")
+            search_text = st.text_input("Search Remarks/Specs", key=f"sheet_hist_search_{key_suffix_sheet}")
 
         if date_range:
             if isinstance(date_range, (tuple, list)):
@@ -1968,7 +2008,8 @@ with tab_history:
                     start_d, end_d = date_range
                     filtered_df = filtered_df[(parsed_dates >= start_d) & (parsed_dates <= end_d)]
                 elif len(date_range) == 1:
-                    filtered_df = filtered_df[parsed_dates >= date_range[0]]
+                    start_d = date_range[0]
+                    filtered_df = filtered_df[parsed_dates >= start_d]
             elif isinstance(date_range, date):
                 filtered_df = filtered_df[parsed_dates == date_range]
 
@@ -1987,13 +2028,13 @@ with tab_history:
             ]
 
         st.dataframe(
-            filtered_df[COLUMNS_HISTORY],
+            filtered_df,
             column_config={
                 "Grus": st.column_config.NumberColumn("Grus", format="%.2f"),
                 "Pcs": st.column_config.NumberColumn("Pcs (Grus × 144)", format="%d"),
             },
             use_container_width=True,
-            hide_index=True,
+            hide_index=True
         )
 # ==========================================
 # Purchase Order & Verification System
