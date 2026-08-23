@@ -2157,13 +2157,6 @@ CREDITORS_LIST = [
 st.set_page_config(page_title="Purchase Order Manager", layout="wide")
 st.title("📦 Purchase Order & Verification System")
 
-# Function to completely wipe form inputs on submit
-def clear_entry_form():
-    st.session_state.item_count = 1
-    for key in list(st.session_state.keys()):
-        if key.startswith(("prod_", "rate_", "qty_")):
-            del st.session_state[key]
-
 tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
 
 # ------------------------------------------------------
@@ -2175,6 +2168,17 @@ with tab1:
 
     def add_product_row():
         st.session_state.item_count += 1
+
+    def clear_form_fields():
+        """Resets all input fields and resets row count to 1"""
+        for i in range(st.session_state.item_count):
+            if f"prod_{i}" in st.session_state:
+                st.session_state[f"prod_{i}"] = ""
+            if f"rate_{i}" in st.session_state:
+                st.session_state[f"rate_{i}"] = 0.0
+            if f"qty_{i}" in st.session_state:
+                st.session_state[f"qty_{i}"] = 0.0
+        st.session_state.item_count = 1
 
     with st.container(border=True):
         col1, col2 = st.columns(2)
@@ -2235,17 +2239,16 @@ with tab1:
                 with st.spinner("Saving to Google Sheets..."):
                     res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
                     if res.status_code == 200:
-                        st.toast(f"✅ Saved {len(order_items)} item(s) for {creditor}!")
-                        # Auto-clear fields and auto-refresh page
-                        clear_entry_form()
-                        st.rerun()
+                        st.success(f"✅ Saved {len(order_items)} item(s) for {creditor}!")
+                        clear_form_fields()  # Clears all dynamic fields automatically
+                        st.rerun()          # Auto-refreshes the UI instantly
                     else:
                         st.error(f"⚠️ Server returned status code {res.status_code}")
             except Exception as e:
                 st.error(f"❌ Connection error: {e}")
 
 # ------------------------------------------------------
-# TAB 2: VERIFICATION DASHBOARD
+# TAB 2: VERIFICATION DASHBOARD (PENDING ORDERS)
 # ------------------------------------------------------
 with tab2:
     st.subheader("📋 Pending Deliveries & Verification")
@@ -2253,20 +2256,29 @@ with tab2:
     if st.button("🔄 Refresh Pending List"):
         st.rerun()
 
+    # Fetch Pending Entries
     pending_list = []
     try:
         payload = {"action": "read_pending"}
         response = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
         
-        if response.status_code == 200 and "application/json" in response.headers.get("Content-Type", ""):
-            data = response.json()
-            if isinstance(data, list):
-                pending_list = data
+        if response.status_code == 200:
+            content_type = response.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                data = response.json()
+                if isinstance(data, list):
+                    pending_list = data
+                elif isinstance(data, dict) and "error" in data:
+                    st.error(f"Apps Script Error: {data['error']}")
+            else:
+                st.error("⚠️ Access Denied: Apps Script returned HTML instead of JSON.")
+        else:
+            st.error(f"Failed with status code: {response.status_code}")
     except Exception as e:
         st.error(f"Failed to fetch pending list: {e}")
 
     if not pending_list:
-        st.info("🎉 No pending orders found!")
+        st.info("🎉 No pending orders found in 'purchase_order_entry'!")
     else:
         st.markdown(f"Found **{len(pending_list)}** item(s) awaiting delivery verification.")
         
@@ -2296,14 +2308,17 @@ with tab2:
                     if action_choice == "❌ Cancel Order":
                         reason_text = st.text_input(
                             "Cancellation Reason *", 
-                            placeholder="Reason for cancellation...", 
+                            placeholder="Enter reason (e.g., Damaged goods, Rate mismatch)", 
                             key=f"reason_{idx}"
                         )
 
                     if action_choice != "Keep Pending":
-                        if st.button(f"Confirm & Update Row {item.get('rowIndex')}", key=f"btn_{idx}", type="primary"):
+                        # Dynamic button text matching chosen action
+                        btn_label = "Confirm & Cancel" if action_choice == "❌ Cancel Order" else "Confirm & Verify"
+                        
+                        if st.button(btn_label, key=f"btn_{idx}", type="primary"):
                             if action_choice == "❌ Cancel Order" and not reason_text.strip():
-                                st.warning("⚠️ Please provide a cancellation reason.")
+                                st.warning("⚠️ Please provide a cancellation reason before submitting.")
                             else:
                                 new_status = "✅ Verified" if action_choice == "✅ Verify Order" else "❌ Cancelled"
                                 
@@ -2318,14 +2333,9 @@ with tab2:
                                     with st.spinner("Updating status..."):
                                         res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=update_payload, timeout=15)
                                         if res.status_code == 200:
-                                            st.toast(f"Updated status to {new_status}!")
-                                            # Clean up verification keys and refresh list
-                                            if f"act_{idx}" in st.session_state:
-                                                del st.session_state[f"act_{idx}"]
-                                            if f"reason_{idx}" in st.session_state:
-                                                del st.session_state[f"reason_{idx}"]
-                                            st.rerun()
+                                            st.toast(f"Status updated to {new_status}!")
+                                            st.rerun()  # Auto-refreshes pending list immediately
                                         else:
-                                            st.error("Failed to update status.")
+                                            st.error("Failed to update status in Google Sheet.")
                                 except Exception as e:
                                     st.error(f"Error updating record: {e}")
