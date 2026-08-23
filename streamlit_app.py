@@ -2155,7 +2155,7 @@ CREDITORS_LIST = [
 ]
 
 st.markdown("---")
-st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
+st.subheader("📦 Purchase Order & Verification System")
 
 tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
 
