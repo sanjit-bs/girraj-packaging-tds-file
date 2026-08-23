@@ -1271,19 +1271,27 @@ def parse_breakup_weights(breakup_str):
 
 
 def sync_mod_breakup():
-    key_suf = st.session_state.get("form_key", 0)
+    """Callback to auto-sum and auto-count for Existing Stock updates"""
+    key_suf = st.session_state.form_key
     raw = st.session_state.get(f"bk_mod_{key_suf}", "")
-    calc_w, calc_q, _ = parse_breakup_weights(raw)
-    st.session_state[f"q_mod_{key_suf}"] = int(calc_q)
-    st.session_state[f"w_mod_{key_suf}"] = float(calc_w)
+    
+    # Only override the numbers if there is actually breakup text entered
+    if raw.strip():
+        calc_w, calc_q, _ = parse_breakup_weights(raw)
+        st.session_state[f"q_mod_{key_suf}"] = int(calc_q)
+        st.session_state[f"w_mod_{key_suf}"] = float(calc_w)
 
 
 def sync_new_breakup():
-    key_suf = st.session_state.get("form_key", 0)
+    """Callback to auto-sum and auto-count for New Stock additions"""
+    key_suf = st.session_state.form_key
     raw = st.session_state.get(f"bk_new_{key_suf}", "")
-    calc_w, calc_q, _ = parse_breakup_weights(raw)
-    st.session_state[f"q_new_{key_suf}"] = int(calc_q)
-    st.session_state[f"w_new_{key_suf}"] = float(calc_w)
+    
+    # Only override the numbers if there is actually breakup text entered
+    if raw.strip():
+        calc_w, calc_q, _ = parse_breakup_weights(raw)
+        st.session_state[f"q_new_{key_suf}"] = int(calc_q)
+        st.session_state[f"w_new_{key_suf}"] = float(calc_w)
 
 
 def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
@@ -1398,56 +1406,38 @@ tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 with tab_entry:
     st.markdown("##### 🔍 Select Product Specifications (Auto-Fills Details or Add New)")
 
-    # Fetch unique values from master
     avail_sizes = sorted(list(set(rill_df["Size"].astype(str).str.strip().unique()))) if not rill_df.empty else []
     avail_gsms = sorted(list(set(rill_df["GSM"].astype(str).str.strip().unique()))) if not rill_df.empty else []
     avail_bfs = sorted(list(set(rill_df["BF"].astype(str).str.strip().unique()))) if not rill_df.empty else []
 
     col_s1, col_s2, col_s3 = st.columns(3)
 
-    # --- SIZE INPUT ---
     with col_s1:
-        sel_sz = st.selectbox(
-            "Size *",
-            options=["Select Size...", "➕ Add New..."] + avail_sizes,
-            key=f"sheet_sz_{key_suffix_rill}",
-        )
+        sel_sz = st.selectbox("Size *", options=["Select Size...", "➕ Add New..."] + avail_sizes, key=f"sheet_sz_{key_suffix_rill}")
         if sel_sz == "➕ Add New...":
             final_size = st.text_input("Type New Size *", key=f"new_sz_{key_suffix_rill}")
         else:
             final_size = sel_sz if sel_sz != "Select Size..." else ""
 
-    # --- GSM INPUT ---
     with col_s2:
-        sel_gsm = st.selectbox(
-            "GSM *",
-            options=["Select GSM...", "➕ Add New..."] + avail_gsms,
-            key=f"sheet_gsm_{key_suffix_rill}",
-        )
+        sel_gsm = st.selectbox("GSM *", options=["Select GSM...", "➕ Add New..."] + avail_gsms, key=f"sheet_gsm_{key_suffix_rill}")
         if sel_gsm == "➕ Add New...":
             final_gsm = st.text_input("Type New GSM *", key=f"new_gsm_{key_suffix_rill}")
         else:
             final_gsm = sel_gsm if sel_gsm != "Select GSM..." else ""
 
-    # --- BF INPUT ---
     with col_s3:
-        sel_bf = st.selectbox(
-            "BF *",
-            options=["Select BF...", "➕ Add New..."] + avail_bfs,
-            key=f"sheet_bf_{key_suffix_rill}",
-        )
+        sel_bf = st.selectbox("BF *", options=["Select BF...", "➕ Add New..."] + avail_bfs, key=f"sheet_bf_{key_suffix_rill}")
         if sel_bf == "➕ Add New...":
             final_bf = st.text_input("Type New BF *", key=f"new_bf_{key_suffix_rill}")
         else:
             final_bf = sel_bf if sel_bf != "Select BF..." else ""
 
-    # Validate that every single field has been either selected or typed
     has_unselected = not (final_size and final_gsm and final_bf)
 
     if has_unselected:
         st.info("👆 Please select or type all details to proceed.")
     else:
-        # Check if this exact combination already exists in the master sheet
         match_df = rill_df[
             (rill_df["Size"].astype(str).str.strip() == final_size.strip()) &
             (rill_df["GSM"].astype(str).str.strip() == final_gsm.strip()) &
@@ -1486,6 +1476,7 @@ with tab_entry:
             _, _, clean_breakup_str = parse_breakup_weights(raw_breakup)
             new_master_breakup, missing_weights = update_master_breakup(curr_breakup, raw_breakup, action_type)
 
+            # Initialize states so the callbacks can safely overwrite them
             if f"q_mod_{key_suffix_rill}" not in st.session_state:
                 st.session_state[f"q_mod_{key_suffix_rill}"] = 0
             if f"w_mod_{key_suffix_rill}" not in st.session_state:
@@ -1552,6 +1543,7 @@ with tab_entry:
 
             _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
 
+            # Initialize states so the callbacks can safely overwrite them
             if f"q_new_{key_suffix_rill}" not in st.session_state:
                 st.session_state[f"q_new_{key_suffix_rill}"] = 0
             if f"w_new_{key_suffix_rill}" not in st.session_state:
@@ -1664,6 +1656,7 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
+
 
 ####################################### Paper Sheet Stock ######################################
 
