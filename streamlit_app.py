@@ -1685,6 +1685,12 @@ def sync_mod_grus():
     grus_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
     st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(grus_val * 144))
 
+def sync_mod_pcs():
+    """Callback to calculate Grus from Pcs (Pcs / 144)."""
+    key_suf = st.session_state.get("sheet_form_key", 0)
+    pcs_val = st.session_state.get(f"sheet_pcs_mod_{key_suf}", 0)
+    st.session_state[f"sheet_g_mod_{key_suf}"] = round(pcs_val / 144.0, 2)
+
 
 def calculate_current_stock(history_df, product, width, length, gsm):
     if history_df.empty:
@@ -1977,6 +1983,7 @@ with tab_entry:
                 min_value=0,
                 step=144,
                 key=f"sheet_pcs_mod_{key_suffix}",
+                on_change=sync_mod_pcs,  # Added reverse calculation callback
             )
         with col_m5:
             new_remark = st.text_input(
@@ -1991,7 +1998,7 @@ with tab_entry:
             elif grus_change == 0 and pcs_change == 0:
                 st.warning("Please enter a non-zero Grus or Pcs value.")
             else:
-                # Calculate negative values for Used
+                # Calculate negative values if "Used" is selected so stock is properly subtracted
                 final_grus_change = float(grus_change) if action_type == "Purchased (+)" else -float(grus_change)
                 final_pcs_change = int(pcs_change) if action_type == "Purchased (+)" else -int(pcs_change)
 
@@ -2135,7 +2142,6 @@ with tab_history:
             use_container_width=True,
             hide_index=True,
         )
-
 
 # ==========================================
 # Purchase Order & Verification System
