@@ -1678,17 +1678,22 @@ COLUMNS_HISTORY = [
     "Remark",
 ]
 
+# ------------------------------------------------------
+# Bi-directional Calculation Callbacks
+# ------------------------------------------------------
 def sync_mod_grus():
     """Callback to calculate Pcs from Grus (Grus * 144)."""
     key_suf = st.session_state.get("sheet_form_key", 0)
     grus_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
     st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(grus_val * 144))
 
+
 def sync_mod_pcs():
     """Callback to calculate Grus from Pcs (Pcs / 144)."""
     key_suf = st.session_state.get("sheet_form_key", 0)
     pcs_val = st.session_state.get(f"sheet_pcs_mod_{key_suf}", 0)
     st.session_state[f"sheet_g_mod_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
+
 
 @st.cache_data(ttl=5)
 def fetch_all_sheet_data():
@@ -1721,32 +1726,26 @@ def fetch_all_sheet_data():
         st.error(f"Error connecting to Sheet API: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
-# ------------------------------------------------------
-# Core Fix: Dynamically Calculate Master Stock from History
-# ------------------------------------------------------
+
 def generate_live_stock(history_df):
-    """Builds the Master Sheet dynamically based entirely on history logs."""
+    """Builds the Master Stock dynamically based entirely on history logs."""
     if history_df.empty:
         return pd.DataFrame(columns=["Product", "Width", "Length", "GSM", "Grus", "Pcs"])
     
     df = history_df.copy()
     
-    # Clean strings
     for col in ["Product", "Width", "Length", "GSM", "Type"]:
         if col in df.columns:
             df[col] = df[col].astype(str).str.strip()
             
-    # Ensure numeric
     df["Grus"] = pd.to_numeric(df["Grus"], errors="coerce").fillna(0.0)
     df["Pcs"] = pd.to_numeric(df["Pcs"], errors="coerce").fillna(0)
     
-    # Deduct stock if marked as "Used"
     if "Type" in df.columns:
         is_used = df["Type"].str.lower() == "used"
         df.loc[is_used, "Grus"] *= -1
         df.loc[is_used, "Pcs"] *= -1
         
-    # Aggregate into final Master Stock
     live_df = df.groupby(["Product", "Width", "Length", "GSM"]).agg(
         Grus=("Grus", "sum"),
         Pcs=("Pcs", "sum")
@@ -1755,8 +1754,8 @@ def generate_live_stock(history_df):
     live_df["Grus"] = live_df["Grus"].round(2)
     return live_df
 
+
 def calculate_current_stock(live_df, product, width, length, gsm):
-    """Fetches the specific stock directly from the dynamically calculated live stock."""
     if live_df.empty:
         return 0.0, 0
     
@@ -1819,14 +1818,12 @@ tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 with tab_entry:
     st.markdown("##### 🔍 Select Product (Auto-Fills Details or Add New)")
 
-    # Combine static and live history to ensure NO product is missing from dropdowns
     all_p = pd.concat([sheet_df["Product"], sheet_history_df["Product"]]).astype(str).str.strip()
     unique_products = sorted(list(set([p for p in all_p if p and p.lower() != 'nan'])))
 
     def on_product_change():
         p_val = st.session_state.get(f"sheet_p_{key_suffix}")
         if p_val and p_val not in ["Select Product...", "➕ Add New..."]:
-            # Auto-fill specs based on live calculated stock
             sub_df = live_stock_df[live_stock_df["Product"].astype(str).str.strip().str.lower() == p_val.strip().lower()]
             if not sub_df.empty:
                 first_row = sub_df.iloc[0]
@@ -1887,9 +1884,22 @@ with tab_entry:
 
         col_m3, col_m4, col_m5 = st.columns([2, 2, 3])
         with col_m3:
-            grus_change = st.number_input("Grus Quantity *", min_value=0.0, step=0.1, format="%.2f", key=f"sheet_g_mod_{key_suffix}", on_change=sync_mod_grus)
+            grus_change = st.number_input(
+                "Grus Quantity *",
+                min_value=0.0,
+                step=0.1,
+                format="%.2f",
+                key=f"sheet_g_mod_{key_suffix}",
+                on_change=sync_mod_grus,
+            )
         with col_m4:
-            pcs_change = st.number_input("Pcs (Grus × 144) *", min_value=0, step=144, key=f"sheet_pcs_mod_{key_suffix}")
+            pcs_change = st.number_input(
+                "Pcs (Grus × 144) *",
+                min_value=0,
+                step=1,
+                key=f"sheet_pcs_mod_{key_suffix}",
+                on_change=sync_mod_pcs,
+            )
         with col_m5:
             new_remark = st.text_input("Remark", value="", key=f"sheet_r_mod_{key_suffix}")
 
@@ -2001,6 +2011,7 @@ with tab_history:
             use_container_width=True,
             hide_index=True,
         )
+
 
 # ==========================================
 # Purchase Order & Verification System
