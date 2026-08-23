@@ -2154,7 +2154,8 @@ CREDITORS_LIST = [
     "The Synthetic Glue & Chemical Industries", "VIJAY ENTERPRISE"
 ]
 
-st.title("📦 Order Entry & Verification System")
+st.set_page_config(page_title="Purchase Order Manager", layout="wide")
+st.title("📦 Purchase Order & Verification System")
 
 tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
 
@@ -2199,7 +2200,7 @@ with tab1:
                 
             if p_desc.strip():
                 order_items.append({
-                    "Product": p_desc,
+                    "Product": p_desc.strip(),
                     "Rate": p_rate,
                     "Quantity": p_qty,
                     "Amount": p_amt
@@ -2213,9 +2214,10 @@ with tab1:
         if creditor == "Select Creditor...":
             st.warning("⚠️ Please select a Creditor.")
         elif not order_items:
-            st.warning("⚠️ Please enter at least one product.")
+            st.warning("⚠️ Please enter at least one product with a description.")
         else:
             payload = {
+                "action": "insert",
                 "Date": order_date.strftime("%Y-%m-%d"),
                 "Creditor": creditor,
                 "Status": "⏳ Pending Delivery",
@@ -2223,17 +2225,19 @@ with tab1:
                 "Items": order_items
             }
             try:
-                with st.spinner("Saving..."):
+                with st.spinner("Saving to Google Sheets..."):
                     res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
                     if res.status_code == 200:
-                        st.success("✅ Saved successfully!")
+                        st.success(f"✅ Saved {len(order_items)} item(s) for {creditor}!")
                         st.session_state.item_count = 1
                         st.rerun()
+                    else:
+                        st.error(f"⚠️ Server returned status code {res.status_code}")
             except Exception as e:
-                st.error(f"❌ Error: {e}")
+                st.error(f"❌ Connection error: {e}")
 
 # ------------------------------------------------------
-# TAB 2: VERIFICATION DASHBOARD (PENDING ORDERS)
+# TAB 2: VERIFICATION DASHBOARD (POST ROUTING)
 # ------------------------------------------------------
 with tab2:
     st.subheader("📋 Pending Deliveries & Verification")
@@ -2241,22 +2245,35 @@ with tab2:
     if st.button("🔄 Refresh Pending List"):
         st.rerun()
 
-    # Fetch Pending Entries from Google Apps Script
+    # Fetch Pending Entries using POST payload
+    pending_list = []
     try:
-        response = requests.get(f"{PURCHASE_APPS_SCRIPT_URL}?action=read_pending", timeout=15)
-        pending_list = response.json() if response.status_code == 200 else []
+        payload = {"action": "read_pending"}
+        response = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
+        
+        if response.status_code == 200:
+            content_type = response.headers.get("Content-Type", "")
+            if "application/json" in content_type:
+                data = response.json()
+                if isinstance(data, list):
+                    pending_list = data
+                elif isinstance(data, dict) and "error" in data:
+                    st.error(f"Apps Script Error: {data['error']}")
+            else:
+                st.error("⚠️ Access Denied: Apps Script returned HTML instead of JSON. Ensure deployment access is set to 'Anyone'.")
+        else:
+            st.error(f"Failed with status code: {response.status_code}")
     except Exception as e:
         st.error(f"Failed to fetch pending list: {e}")
-        pending_list = []
 
     if not pending_list:
-        st.info("🎉 No pending orders found! Everything is verified or updated.")
+        st.info("🎉 No pending orders found in 'purchase_order_entry'!")
     else:
         st.markdown(f"Found **{len(pending_list)}** item(s) awaiting delivery verification.")
         
         for idx, item in enumerate(pending_list):
             with st.container(border=True):
-                st.markdown(f"##### 📅 Date: `{item.get('date')}` | Supplier: **{item.get('creditor')}**")
+                st.markdown(f"##### 📅 Date: `{item.get('date')}` | Creditor: **{item.get('creditor')}**")
                 
                 c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
                 c1.write(f"**Product:** {item.get('product')}")
@@ -2266,12 +2283,11 @@ with tab2:
 
                 st.markdown("---")
                 
-                # Verification & Action Controls
                 act_col1, act_col2 = st.columns([2, 4])
                 
                 with act_col1:
                     action_choice = st.radio(
-                        "Action",
+                        "Verification Action:",
                         ["Keep Pending", "✅ Verify Order", "❌ Cancel Order"],
                         key=f"act_{idx}"
                     )
@@ -2286,13 +2302,12 @@ with tab2:
                         )
 
                     if action_choice != "Keep Pending":
-                        if st.button(f"Confirm & Save ({item.get('creditor')})", key=f"btn_{idx}", type="primary"):
+                        if st.button(f"Confirm & Update Row {item.get('rowIndex')}", key=f"btn_{idx}", type="primary"):
                             if action_choice == "❌ Cancel Order" and not reason_text.strip():
                                 st.warning("⚠️ Please provide a cancellation reason before submitting.")
                             else:
                                 new_status = "✅ Verified" if action_choice == "✅ Verify Order" else "❌ Cancelled"
                                 
-                                # Payload to update specific row in Google Sheet
                                 update_payload = {
                                     "action": "update_status",
                                     "rowIndex": item.get("rowIndex"),
@@ -2301,25 +2316,12 @@ with tab2:
                                 }
 
                                 try:
-                                    res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=update_payload, timeout=15)
-                                    if res.status_code == 200:
-                                        st.toast(f"Updated status to {new_status}!")
-                                        st.rerun()
-                                    else:
-                                        st.error("Failed to update status in Google Sheet.")
+                                    with st.spinner("Updating status..."):
+                                        res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=update_payload, timeout=15)
+                                        if res.status_code == 200:
+                                            st.toast(f"Row {item.get('rowIndex')} updated to {new_status}!")
+                                            st.rerun()
+                                        else:
+                                            st.error("Failed to update status in Google Sheet.")
                                 except Exception as e:
                                     st.error(f"Error updating record: {e}")
-# Fetch Pending Entries safely
-    try:
-        response = requests.get(f"{PURCHASE_APPS_SCRIPT_URL}?action=read_pending", timeout=15)
-        
-        # Check if response is actually JSON
-        if "application/json" in response.headers.get("Content-Type", ""):
-            pending_list = response.json()
-        else:
-            st.error("⚠️ Access Error: Google Apps Script deployment is not public.")
-            st.info("Make sure 'Who has access' is set to 'Anyone' in Apps Script Deployment.")
-            pending_list = []
-    except Exception as e:
-        st.error(f"Failed to fetch pending list: {e}")
-        pending_list = []
