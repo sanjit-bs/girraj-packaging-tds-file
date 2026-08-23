@@ -2143,95 +2143,107 @@ with tab_history:
 # ==========================================
 # 🔗 PASTE YOUR APPS SCRIPT WEB APP URL HERE
 # ==========================================
-PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec"
+PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxHGdsY3noEmyM2hYIZAQyNnGCYPBUcbzc71l8YyPyPXp7FhHOvcZVhrgHmsYjUUSwt/exec"
 
-st.subheader("🛒 Purchase Order Entry & Verification")
+# Initialize session state for dynamic rows
+if "item_count" not in st.session_state:
+    st.session_state.item_count = 1
 
-# List of Creditors
+def add_product_row():
+    st.session_state.item_count += 1
+
+st.subheader("🛒 Multi-Product Purchase Order Entry")
+
 CREDITORS_LIST = [
-    "Select Creditor...",
-    "BALAJI ENTERPRISE",
-    "DHANUKA UDYOG PRIVATE LIMITED",
-    "EVEREST PAPER MILLS (P) LTD.",
-    "KRISHNA TRADERS",
-    "PAPERS (India)",
-    "PS INDUSTRIES",
-    "Reflection Papers Pvt. Ltd.",
-    "RIPCO TRADERS PVT. LTD.",
-    "RM INDUSTRIAL EQUIPMENTS",
-    "Samir Board World",
-    "SHIV SHAKTI TRADERS",
-    "Shree Durga Trading Co.",
-    "Star Trading Corporation",
-    "STARK RIDGE PAPER PVT LTD",
-    "The Synthetic Glue & Chemical Industries",
-    "VIJAY ENTERPRISE"
+    "Select Creditor...", "BALAJI ENTERPRISE", "DHANUKA UDYOG PRIVATE LIMITED", 
+    "EVEREST PAPER MILLS (P) LTD.", "KRISHNA TRADERS", "PAPERS (India)", 
+    "PS INDUSTRIES", "Reflection Papers Pvt. Ltd.", "RIPCO TRADERS PVT. LTD.", 
+    "RM INDUSTRIAL EQUIPMENTS", "Samir Board World", "SHIV SHAKTI TRADERS", 
+    "Shree Durga Trading Co.", "Star Trading Corporation", "STARK RIDGE PAPER PVT LTD", 
+    "The Synthetic Glue & Chemical Industries", "VIJAY ENTERPRISE"
 ]
 
-# --- ORDER ENTRY FORM ---
+# --- 1. GENERAL ORDER DETAILS ---
 with st.container(border=True):
-    st.markdown("#### 1. Order Details")
-    
     col1, col2 = st.columns(2)
     with col1:
         creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST)
-        order_date = st.date_input("Order Date", value=date.today())
     with col2:
-        product_desc = st.text_input("Product Description *", placeholder="e.g., Kraft Paper 120 GSM")
-    
-    col3, col4, col5 = st.columns(3)
-    with col3:
-        rate = st.number_input("Rate per Unit (₹)", min_value=0.0, step=1.0, format="%.2f")
-    with col4:
-        quantity = st.number_input("Quantity", min_value=0.0, step=1.0)
-    with col5:
-        total_amount = rate * quantity
-        st.metric(label="Total Order Amount (₹)", value=f"₹ {total_amount:,.2f}")
+        order_date = st.date_input("Order Date", value=date.today())
 
-# --- INVOICE VERIFICATION SECTION ---
+# --- 2. DYNAMIC PRODUCT ENTRY ---
+st.markdown("#### Product Details")
+order_items = []
+grand_total = 0.0
+
+with st.container(border=True):
+    # Dynamically generate rows based on item_count
+    for i in range(st.session_state.item_count):
+        st.markdown(f"**Item {i+1}**")
+        c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
+        
+        with c1:
+            p_desc = st.text_input("Product Description", key=f"prod_{i}")
+        with c2:
+            p_rate = st.number_input("Rate (₹)", min_value=0.0, step=1.0, format="%.2f", key=f"rate_{i}")
+        with c3:
+            p_qty = st.number_input("Quantity", min_value=0.0, step=1.0, key=f"qty_{i}")
+        
+        p_amt = p_rate * p_qty
+        grand_total += p_amt
+        
+        with c4:
+            st.metric(label="Amount", value=f"₹ {p_amt:,.2f}")
+            
+        # Store valid items
+        if p_desc.strip():
+            order_items.append({
+                "Product": p_desc,
+                "Rate": p_rate,
+                "Quantity": p_qty,
+                "Amount": p_amt
+            })
+            
+    st.button("➕ Add Another Product", on_click=add_product_row)
+
+st.metric("Grand Total (₹)", f"₹ {grand_total:,.2f}")
+
+# --- 3. VERIFICATION & SUBMISSION ---
 st.markdown("---")
 with st.container(border=True):
-    st.markdown("#### 2. Invoice & Delivery Verification")
-    
     order_status = st.radio(
-        "Current Order Status:",
+        "Invoice Verification Status:",
         ["⏳ Pending Delivery", "✅ Verified (Rate, Qty & Product Match)", "❌ Cancelled"],
         horizontal=True
     )
     
     cancel_reason = ""
     if order_status == "❌ Cancelled":
-        cancel_reason = st.text_input("Reason for Cancellation", placeholder="e.g., Poor quality, late delivery...")
-        st.error("Order marked as Cancelled.")
-    elif order_status == "✅ Verified (Rate, Qty & Product Match)":
-        st.success("Invoice verified and ready for ledger entry!")
+        cancel_reason = st.text_input("Reason for Cancellation")
 
-    # --- SUBMIT BUTTON & SEND DATA ---
-    if st.button("Save Order Record", type="primary"):
-        if creditor == "Select Creditor..." or not product_desc:
-            st.warning("Please fill in the Creditor and Product Description.")
+    if st.button("Save Full Order", type="primary"):
+        if creditor == "Select Creditor...":
+            st.warning("⚠️ Please select a Creditor.")
+        elif not order_items:
+            st.warning("⚠️ Please enter at least one product with a description.")
         else:
-            # Package the data
             payload = {
-                "Date": order_date.strftime("%Y-%m-%d"), # YYYY-MM-DD format for flawless sorting
+                "Date": order_date.strftime("%Y-%m-%d"),
                 "Creditor": creditor,
-                "Product": product_desc,
-                "Rate": rate,
-                "Quantity": quantity,
-                "Amount": total_amount,
                 "Status": order_status,
-                "CancellationReason": cancel_reason
+                "CancellationReason": cancel_reason,
+                "Items": order_items  # Sending the array of products
             }
             
             try:
                 with st.spinner("Saving to Google Sheets..."):
-                    # Send data to Apps Script
-                    response = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
-                    
-                    if response.status_code == 200:
-                        st.toast("✅ Record saved successfully!")
-                        st.success(f"Order for {creditor} has been recorded.")
+                    res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
+                    if res.status_code == 200:
+                        st.success(f"✅ Saved {len(order_items)} items for {creditor}!")
+                        # Optionally reset form by clearing session state
+                        st.session_state.item_count = 1 
+                        st.rerun()
                     else:
-                        st.error("⚠️ Failed to save record. Check your Web App URL.")
+                        st.error("⚠️ Failed to save record.")
             except Exception as e:
-                st.error(f"❌ Error connecting to Google Sheets: {e}")
+                st.error(f"❌ Connection error: {e}")
