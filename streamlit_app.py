@@ -1991,6 +1991,10 @@ with tab_entry:
             elif grus_change == 0 and pcs_change == 0:
                 st.warning("Please enter a non-zero Grus or Pcs value.")
             else:
+                # Calculate negative values for Used
+                final_grus_change = float(grus_change) if action_type == "Purchased (+)" else -float(grus_change)
+                final_pcs_change = int(pcs_change) if action_type == "Purchased (+)" else -int(pcs_change)
+
                 payload = {
                     "action": "update_stock",
                     "date": txn_date.strftime("%d/%m/%Y"),
@@ -2003,8 +2007,8 @@ with tab_entry:
                     "width": str(final_w).strip(),    
                     "length": str(final_l).strip(),   
                     "gsm": str(final_g).strip(),      
-                    "grus_change": float(grus_change),
-                    "pcs_change": int(pcs_change),
+                    "grus_change": final_grus_change, 
+                    "pcs_change": final_pcs_change,
                     "remark": new_remark.strip(),
                 }
 
@@ -2134,7 +2138,7 @@ with tab_history:
 
 
 # ==========================================
-# 🔗 PASTE YOUR APPS SCRIPT WEB APP URL HERE
+# Purchase Order & Verification System
 # ==========================================
 PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxHGdsY3noEmyM2hYIZAQyNnGCYPBUcbzc71l8YyPyPXp7FhHOvcZVhrgHmsYjUUSwt/exec"
 
