@@ -1667,15 +1667,7 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxFiTY2W44BRhicfK7nTx
 
 COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"]
 COLUMNS_HISTORY = [
-    "Date",
-    "Type",
-    "Product",
-    "Width",
-    "Length",
-    "GSM",
-    "Grus",
-    "Pcs",
-    "Remark",
+    "Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"
 ]
 
 # ------------------------------------------------------
@@ -1732,34 +1724,22 @@ def fetch_all_sheet_data():
         st.error(f"Error connecting to Sheet API: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
-def generate_live_stock(history_df):
-    """Builds the Master Stock dynamically based entirely on history logs."""
-    if history_df.empty:
-        return pd.DataFrame(columns=["Product", "Width", "Length", "GSM", "Grus", "Pcs"])
+def clean_master_stock(master_df):
+    """Cleans and standardizes the direct sheet_stock data for accurate display."""
+    if master_df.empty:
+        return pd.DataFrame(columns=COLUMNS_MASTER)
     
-    df = history_df.copy()
-    
+    df = master_df.copy()
     for col in ["Product", "Width", "Length", "GSM"]:
         if col in df.columns:
             df[col] = df[col].apply(parse_num)
             
-    df["Grus"] = pd.to_numeric(df["Grus"], errors="coerce").fillna(0.0)
-    df["Pcs"] = pd.to_numeric(df["Pcs"], errors="coerce").fillna(0)
-    
-    if "Type" in df.columns:
-        is_used = df["Type"].astype(str).str.lower() == "used"
-        df.loc[is_used, "Grus"] *= -1
-        df.loc[is_used, "Pcs"] *= -1
-        
-    live_df = df.groupby(["Product", "Width", "Length", "GSM"]).agg(
-        Grus=("Grus", "sum"),
-        Pcs=("Pcs", "sum")
-    ).reset_index()
-    
-    live_df["Grus"] = live_df["Grus"].round(2)
-    return live_df
+    df["Grus"] = pd.to_numeric(df["Grus"], errors="coerce").fillna(0.0).round(2)
+    df["Pcs"] = pd.to_numeric(df["Pcs"], errors="coerce").fillna(0).astype(int)
+    return df
 
 def calculate_current_stock(live_df, product, width, length, gsm):
+    """Looks up current stock directly from the cleaned sheet_stock data."""
     if live_df.empty:
         return 0.0, 0
     
@@ -1793,10 +1773,10 @@ def send_sheet_update(payload):
         st.error(f"Failed to send update: {e}")
 
 # ==========================================
-# FETCH DATA & COMPUTE LIVE LEDGER
+# FETCH DATA & CONNECT TO SHEET_STOCK
 # ==========================================
 sheet_df, sheet_history_df = fetch_all_sheet_data()
-live_stock_df = generate_live_stock(sheet_history_df)
+live_stock_df = clean_master_stock(sheet_df)  # Directly using sheet_stock now!
 
 st.markdown("---")
 st.subheader("📜 Paper Sheet Stock Ledger & Audit Log")
@@ -1821,7 +1801,7 @@ tab_entry, tab_history = st.tabs(["⚡ Record Entry", "📜 History Log"])
 with tab_entry:
     st.markdown("##### 🔍 Select Product (Auto-Fills Details or Add New)")
 
-    all_p = pd.concat([sheet_df["Product"], sheet_history_df["Product"]]).astype(str).str.strip()
+    all_p = pd.concat([live_stock_df["Product"], sheet_history_df["Product"]]).astype(str).str.strip()
     unique_products = sorted(list(set([p for p in all_p if p and p.lower() != 'nan'])))
 
     def on_product_change():
@@ -1872,7 +1852,7 @@ with tab_entry:
     if not has_unselected:
         curr_grus, curr_pcs = calculate_current_stock(live_stock_df, final_p, final_w, final_l, final_g)
 
-        st.success(f"📌 **Selected Spec:** {final_p} | {final_w} × {final_l} | {final_g} GSM  \n⚡ **Current Stock:** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs")
+        st.success(f"📌 **Selected Spec:** {final_p} | {final_w} × {final_l} | {final_g} GSM  \n⚡ **Current Stock (from sheet_stock):** {curr_grus:.2f} Grus | **Total Pcs:** {curr_pcs} Pcs")
 
         col_m1, col_m2 = st.columns([1.5, 2.5])
         with col_m1:
@@ -1912,7 +1892,7 @@ with tab_entry:
             elif grus_change == 0 and pcs_change == 0:
                 st.warning("Please enter a non-zero Grus or Pcs value.")
             else:
-                # Payload sends numeric types instead of forced string conversion
+                # Transmit parsed parameters so the Apps Script finds the row perfectly
                 payload = {
                     "action": "update_stock",
                     "date": txn_date.strftime("%d/%m/%Y"),
@@ -1928,9 +1908,9 @@ with tab_entry:
                 send_sheet_update(payload)
 
     # ==========================================
-    # DISPLAY CALCULATED INVENTORY 
+    # DISPLAY ACTUAL SHEET_STOCK INVENTORY 
     # ==========================================
-    st.markdown("### 📊 Live Stock Ledger (Dynamically Calculated from History)")
+    st.markdown("### 📊 Live Stock Ledger (Directly from `sheet_stock`)")
     st.dataframe(
         live_stock_df, 
         use_container_width=True, 
@@ -2015,7 +1995,6 @@ with tab_history:
             use_container_width=True,
             hide_index=True,
         )
-
 # ==========================================
 # Purchase Order & Verification System
 # ==========================================
