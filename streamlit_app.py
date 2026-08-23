@@ -2145,15 +2145,6 @@ with tab_history:
 # ==========================================
 PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxHGdsY3noEmyM2hYIZAQyNnGCYPBUcbzc71l8YyPyPXp7FhHOvcZVhrgHmsYjUUSwt/exec"
 
-# Initialize session state for dynamic rows
-if "item_count" not in st.session_state:
-    st.session_state.item_count = 1
-
-def add_product_row():
-    st.session_state.item_count += 1
-
-st.subheader("🛒 Multi-Product Purchase Order Entry")
-
 CREDITORS_LIST = [
     "Select Creditor...", "BALAJI ENTERPRISE", "DHANUKA UDYOG PRIVATE LIMITED", 
     "EVEREST PAPER MILLS (P) LTD.", "KRISHNA TRADERS", "PAPERS (India)", 
@@ -2163,87 +2154,158 @@ CREDITORS_LIST = [
     "The Synthetic Glue & Chemical Industries", "VIJAY ENTERPRISE"
 ]
 
-# --- 1. GENERAL ORDER DETAILS ---
-with st.container(border=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST)
-    with col2:
-        order_date = st.date_input("Order Date", value=date.today())
+st.title("📦 Order Entry & Verification System")
 
-# --- 2. DYNAMIC PRODUCT ENTRY ---
-st.markdown("#### Product Details")
-order_items = []
-grand_total = 0.0
+tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
 
-with st.container(border=True):
-    # Dynamically generate rows based on item_count
-    for i in range(st.session_state.item_count):
-        st.markdown(f"**Item {i+1}**")
-        c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
-        
-        with c1:
-            p_desc = st.text_input("Product Description", key=f"prod_{i}")
-        with c2:
-            p_rate = st.number_input("Rate (₹)", min_value=0.0, step=1.0, format="%.2f", key=f"rate_{i}")
-        with c3:
-            p_qty = st.number_input("Quantity", min_value=0.0, step=1.0, key=f"qty_{i}")
-        
-        p_amt = p_rate * p_qty
-        grand_total += p_amt
-        
-        with c4:
-            st.metric(label="Amount", value=f"₹ {p_amt:,.2f}")
+# ------------------------------------------------------
+# TAB 1: NEW MULTI-PRODUCT ORDER ENTRY
+# ------------------------------------------------------
+with tab1:
+    if "item_count" not in st.session_state:
+        st.session_state.item_count = 1
+
+    def add_product_row():
+        st.session_state.item_count += 1
+
+    with st.container(border=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST, key="entry_creditor")
+        with col2:
+            order_date = st.date_input("Order Date", value=date.today(), key="entry_date")
+
+    st.markdown("#### Product Details")
+    order_items = []
+    grand_total = 0.0
+
+    with st.container(border=True):
+        for i in range(st.session_state.item_count):
+            st.markdown(f"**Item {i+1}**")
+            c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
             
-        # Store valid items
-        if p_desc.strip():
-            order_items.append({
-                "Product": p_desc,
-                "Rate": p_rate,
-                "Quantity": p_qty,
-                "Amount": p_amt
-            })
+            with c1:
+                p_desc = st.text_input("Product Description", key=f"prod_{i}")
+            with c2:
+                p_rate = st.number_input("Rate (₹)", min_value=0.0, step=1.0, format="%.2f", key=f"rate_{i}")
+            with c3:
+                p_qty = st.number_input("Quantity", min_value=0.0, step=1.0, key=f"qty_{i}")
             
-    st.button("➕ Add Another Product", on_click=add_product_row)
+            p_amt = p_rate * p_qty
+            grand_total += p_amt
+            
+            with c4:
+                st.metric(label="Amount", value=f"₹ {p_amt:,.2f}")
+                
+            if p_desc.strip():
+                order_items.append({
+                    "Product": p_desc,
+                    "Rate": p_rate,
+                    "Quantity": p_qty,
+                    "Amount": p_amt
+                })
+                
+        st.button("➕ Add Another Product", on_click=add_product_row)
 
-st.metric("Grand Total (₹)", f"₹ {grand_total:,.2f}")
+    st.metric("Grand Total (₹)", f"₹ {grand_total:,.2f}")
 
-# --- 3. VERIFICATION & SUBMISSION ---
-st.markdown("---")
-with st.container(border=True):
-    order_status = st.radio(
-        "Invoice Verification Status:",
-        ["⏳ Pending Delivery", "✅ Verified (Rate, Qty & Product Match)", "❌ Cancelled"],
-        horizontal=True
-    )
-    
-    cancel_reason = ""
-    if order_status == "❌ Cancelled":
-        cancel_reason = st.text_input("Reason for Cancellation")
-
-    if st.button("Save Full Order", type="primary"):
+    if st.button("Save New Order", type="primary"):
         if creditor == "Select Creditor...":
             st.warning("⚠️ Please select a Creditor.")
         elif not order_items:
-            st.warning("⚠️ Please enter at least one product with a description.")
+            st.warning("⚠️ Please enter at least one product.")
         else:
             payload = {
                 "Date": order_date.strftime("%Y-%m-%d"),
                 "Creditor": creditor,
-                "Status": order_status,
-                "CancellationReason": cancel_reason,
-                "Items": order_items  # Sending the array of products
+                "Status": "⏳ Pending Delivery",
+                "CancellationReason": "",
+                "Items": order_items
             }
-            
             try:
-                with st.spinner("Saving to Google Sheets..."):
+                with st.spinner("Saving..."):
                     res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
                     if res.status_code == 200:
-                        st.success(f"✅ Saved {len(order_items)} items for {creditor}!")
-                        # Optionally reset form by clearing session state
-                        st.session_state.item_count = 1 
+                        st.success("✅ Saved successfully!")
+                        st.session_state.item_count = 1
                         st.rerun()
-                    else:
-                        st.error("⚠️ Failed to save record.")
             except Exception as e:
-                st.error(f"❌ Connection error: {e}")
+                st.error(f"❌ Error: {e}")
+
+# ------------------------------------------------------
+# TAB 2: VERIFICATION DASHBOARD (PENDING ORDERS)
+# ------------------------------------------------------
+with tab2:
+    st.subheader("📋 Pending Deliveries & Verification")
+    
+    if st.button("🔄 Refresh Pending List"):
+        st.rerun()
+
+    # Fetch Pending Entries from Google Apps Script
+    try:
+        response = requests.get(f"{PURCHASE_APPS_SCRIPT_URL}?action=read_pending", timeout=15)
+        pending_list = response.json() if response.status_code == 200 else []
+    except Exception as e:
+        st.error(f"Failed to fetch pending list: {e}")
+        pending_list = []
+
+    if not pending_list:
+        st.info("🎉 No pending orders found! Everything is verified or updated.")
+    else:
+        st.markdown(f"Found **{len(pending_list)}** item(s) awaiting delivery verification.")
+        
+        for idx, item in enumerate(pending_list):
+            with st.container(border=True):
+                st.markdown(f"##### 📅 Date: `{item.get('date')}` | Supplier: **{item.get('creditor')}**")
+                
+                c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
+                c1.write(f"**Product:** {item.get('product')}")
+                c2.write(f"**Rate:** ₹{item.get('rate')}")
+                c3.write(f"**Qty:** {item.get('quantity')}")
+                c4.write(f"**Total:** ₹{item.get('amount')}")
+
+                st.markdown("---")
+                
+                # Verification & Action Controls
+                act_col1, act_col2 = st.columns([2, 4])
+                
+                with act_col1:
+                    action_choice = st.radio(
+                        "Action",
+                        ["Keep Pending", "✅ Verify Order", "❌ Cancel Order"],
+                        key=f"act_{idx}"
+                    )
+
+                with act_col2:
+                    reason_text = ""
+                    if action_choice == "❌ Cancel Order":
+                        reason_text = st.text_input(
+                            "Cancellation Reason *", 
+                            placeholder="Enter reason (e.g., Damaged goods, Rate mismatch)", 
+                            key=f"reason_{idx}"
+                        )
+
+                    if action_choice != "Keep Pending":
+                        if st.button(f"Confirm & Save ({item.get('creditor')})", key=f"btn_{idx}", type="primary"):
+                            if action_choice == "❌ Cancel Order" and not reason_text.strip():
+                                st.warning("⚠️ Please provide a cancellation reason before submitting.")
+                            else:
+                                new_status = "✅ Verified" if action_choice == "✅ Verify Order" else "❌ Cancelled"
+                                
+                                # Payload to update specific row in Google Sheet
+                                update_payload = {
+                                    "action": "update_status",
+                                    "rowIndex": item.get("rowIndex"),
+                                    "status": new_status,
+                                    "cancellationReason": reason_text.strip()
+                                }
+
+                                try:
+                                    res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=update_payload, timeout=15)
+                                    if res.status_code == 200:
+                                        st.toast(f"Updated status to {new_status}!")
+                                        st.rerun()
+                                    else:
+                                        st.error("Failed to update status in Google Sheet.")
+                                except Exception as e:
+                                    st.error(f"Error updating record: {e}")
