@@ -2159,33 +2159,27 @@ st.title("📦 Purchase Order & Verification System")
 
 tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
 
+# Initialize session state tracking
+if "item_count" not in st.session_state:
+    st.session_state.item_count = 1
+if "form_version" not in st.session_state:
+    st.session_state.form_version = 0
+
 # ------------------------------------------------------
 # TAB 1: NEW MULTI-PRODUCT ORDER ENTRY
 # ------------------------------------------------------
 with tab1:
-    if "item_count" not in st.session_state:
-        st.session_state.item_count = 1
-
     def add_product_row():
         st.session_state.item_count += 1
 
-    def clear_form_fields():
-        """Resets all input fields and resets row count to 1"""
-        for i in range(st.session_state.item_count):
-            if f"prod_{i}" in st.session_state:
-                st.session_state[f"prod_{i}"] = ""
-            if f"rate_{i}" in st.session_state:
-                st.session_state[f"rate_{i}"] = 0.0
-            if f"qty_{i}" in st.session_state:
-                st.session_state[f"qty_{i}"] = 0.0
-        st.session_state.item_count = 1
+    v = st.session_state.form_version  # Version suffix for widget keys
 
     with st.container(border=True):
         col1, col2 = st.columns(2)
         with col1:
-            creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST, key="entry_creditor")
+            creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST, key=f"creditor_{v}")
         with col2:
-            order_date = st.date_input("Order Date", value=date.today(), key="entry_date")
+            order_date = st.date_input("Order Date", value=date.today(), key=f"date_{v}")
 
     st.markdown("#### Product Details")
     order_items = []
@@ -2197,11 +2191,11 @@ with tab1:
             c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
             
             with c1:
-                p_desc = st.text_input("Product Description", key=f"prod_{i}")
+                p_desc = st.text_input("Product Description", key=f"prod_{v}_{i}")
             with c2:
-                p_rate = st.number_input("Rate (₹)", min_value=0.0, step=1.0, format="%.2f", key=f"rate_{i}")
+                p_rate = st.number_input("Rate (₹)", min_value=0.0, step=1.0, format="%.2f", key=f"rate_{v}_{i}")
             with c3:
-                p_qty = st.number_input("Quantity", min_value=0.0, step=1.0, key=f"qty_{i}")
+                p_qty = st.number_input("Quantity", min_value=0.0, step=1.0, key=f"qty_{v}_{i}")
             
             p_amt = p_rate * p_qty
             grand_total += p_amt
@@ -2239,9 +2233,12 @@ with tab1:
                 with st.spinner("Saving to Google Sheets..."):
                     res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
                     if res.status_code == 200:
-                        st.success(f"✅ Saved {len(order_items)} item(s) for {creditor}!")
-                        clear_form_fields()  # Clears all dynamic fields automatically
-                        st.rerun()          # Auto-refreshes the UI instantly
+                        st.toast(f"✅ Saved {len(order_items)} item(s) for {creditor}!")
+                        
+                        # Reset fields safely by incrementing form version
+                        st.session_state.form_version += 1
+                        st.session_state.item_count = 1
+                        st.rerun()
                     else:
                         st.error(f"⚠️ Server returned status code {res.status_code}")
             except Exception as e:
@@ -2313,7 +2310,6 @@ with tab2:
                         )
 
                     if action_choice != "Keep Pending":
-                        # Dynamic button text matching chosen action
                         btn_label = "Confirm & Cancel" if action_choice == "❌ Cancel Order" else "Confirm & Verify"
                         
                         if st.button(btn_label, key=f"btn_{idx}", type="primary"):
@@ -2334,7 +2330,7 @@ with tab2:
                                         res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=update_payload, timeout=15)
                                         if res.status_code == 200:
                                             st.toast(f"Status updated to {new_status}!")
-                                            st.rerun()  # Auto-refreshes pending list immediately
+                                            st.rerun()
                                         else:
                                             st.error("Failed to update status in Google Sheet.")
                                 except Exception as e:
