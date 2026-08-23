@@ -1684,6 +1684,12 @@ def sync_mod_grus():
     grus_val = st.session_state.get(f"sheet_g_mod_{key_suf}", 0.0)
     st.session_state[f"sheet_pcs_mod_{key_suf}"] = int(round(grus_val * 144))
 
+def sync_mod_pcs():
+    """Callback to calculate Grus from Pcs (Pcs / 144)."""
+    key_suf = st.session_state.get("sheet_form_key", 0)
+    pcs_val = st.session_state.get(f"sheet_pcs_mod_{key_suf}", 0)
+    st.session_state[f"sheet_g_mod_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
+
 @st.cache_data(ttl=5)
 def fetch_all_sheet_data():
     try:
