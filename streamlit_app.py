@@ -2309,3 +2309,17 @@ with tab2:
                                         st.error("Failed to update status in Google Sheet.")
                                 except Exception as e:
                                     st.error(f"Error updating record: {e}")
+# Fetch Pending Entries safely
+    try:
+        response = requests.get(f"{PURCHASE_APPS_SCRIPT_URL}?action=read_pending", timeout=15)
+        
+        # Check if response is actually JSON
+        if "application/json" in response.headers.get("Content-Type", ""):
+            pending_list = response.json()
+        else:
+            st.error("⚠️ Access Error: Google Apps Script deployment is not public.")
+            st.info("Make sure 'Who has access' is set to 'Anyone' in Apps Script Deployment.")
+            pending_list = []
+    except Exception as e:
+        st.error(f"Failed to fetch pending list: {e}")
+        pending_list = []
