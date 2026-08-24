@@ -1666,7 +1666,7 @@ COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", 
 COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
 
 # ------------------------------------------------------
-# Bidirectional Calculations Callback Functions
+# Helper Functions & Callbacks
 # ------------------------------------------------------
 def sync_grus():
     key_suf = st.session_state.form_key
@@ -1679,10 +1679,11 @@ def sync_pcs():
     st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
 
 def calculate_weight(w, l, gsm, pcs):
-    """Formula: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
+    """Calculates weight based on: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
     try:
-        w_f, l_f, gsm_f, pcs_i = float(w), float(l), float(gsm), int(pcs)
-        return round((((w_f * l_f * gsm_f) / 1550) / 1000) * pcs_i, 3)
+        w_float, l_float, gsm_float, pcs_int = float(w), float(l), float(gsm), int(pcs)
+        weight = (((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int
+        return round(weight, 3)
     except (ValueError, TypeError):
         return 0.000
 
@@ -1767,7 +1768,7 @@ with tab_entry:
         avail_l = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
         avail_g = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
-    # Specification 4-Column Layout
+    # Uniform 4-Column Layout for specs
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
@@ -1815,31 +1816,33 @@ with tab_entry:
         if f"pcs_in_{key_suffix}" not in st.session_state:
             st.session_state[f"pcs_in_{key_suffix}"] = 0
 
-        # Current calculated weight suggestion
-        calc_w = calculate_weight(final_w, final_l, final_g, st.session_state[f"pcs_in_{key_suffix}"])
-
-        # Entry 4-Column Layout
+        # Uniform 4-Column Layout for entry specifics
         col_e1, col_e2, col_e3, col_e4 = st.columns(4)
         
         with col_e1:
             grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus)
         with col_e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs)
+        
+        # Calculate weight automatically for UI viewing
+        txn_weight = calculate_weight(final_w, final_l, final_g, pcs_val)
+        
         with col_e3:
-            # Allows custom manual typing; defaults to calculated formula value
-            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", value=calc_w, key=f"w_in_{key_suffix}")
+            st.number_input("Weight (Kg)", value=txn_weight, disabled=True, format="%.3f")
         with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
-            if grus_val == 0 and pcs_val == 0 and weight_val == 0:
-                st.warning("Please specify a quantity (Grus/Pcs) or Weight higher than 0.")
-            elif action_type == "Used" and pcs_val > curr_pcs and curr_pcs > 0:
+            if grus_val == 0 and pcs_val == 0:
+                st.warning("Please specify a quantity higher than 0.")
+            elif action_type == "Used" and pcs_val > curr_pcs:
                 st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
             else:
                 new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
                 new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
-                new_weight = curr_weight + weight_val if action_type == "Purchased" else curr_weight - weight_val
+                
+                # Recalculate total new weight to prevent floating point drifting
+                new_weight = calculate_weight(final_w, final_l, final_g, new_pcs)
 
                 payload = {
                     "action": "update_stock",
@@ -1851,10 +1854,10 @@ with tab_entry:
                     "gsm": final_g.strip(),
                     "grus_change": float(grus_val),
                     "pcs_change": int(pcs_val),
-                    "weight_change": float(weight_val),
-                    "new_grus": max(0.0, float(new_grus)),
-                    "new_pcs": max(0, int(new_pcs)),
-                    "new_weight": max(0.0, round(float(new_weight), 3)),
+                    "weight_change": float(txn_weight),
+                    "new_grus": float(new_grus),
+                    "new_pcs": int(new_pcs),
+                    "new_weight": float(new_weight),
                     "remark": remark.strip()
                 }
                 send_update_to_sheet(payload)
@@ -1909,7 +1912,7 @@ with tab_history:
             with f_col7:
                 search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
             with f_col8:
-                st.write("")
+                st.write("")  # Keep 4-column symmetry 
 
         if f_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(f_type)]
@@ -1940,7 +1943,6 @@ with tab_history:
             use_container_width=True,
             hide_index=True
         )
-
 # ==========================================
 ################################## Purchase Order & Verification System #########################################
 # ==========================================
