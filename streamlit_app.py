@@ -1660,7 +1660,7 @@ with tab_history:
 
 ####################################### Paper Sheet Stock ######################################
 # Update with your deployed Web App URL
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgvKP5vzdFw0GyALiqbyzK5tRgxG3qZIl8ufPzOntdkTxlhviuEsjadgz6oPyDziNJ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
 
 COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
@@ -1723,7 +1723,8 @@ def send_update_to_sheet(payload):
             st.session_state.form_key += 1
             st.rerun()
         else:
-            st.error(f"Error: {res_data.get('message')}")
+            err_msg = res_data.get("message") or "Unknown server error. Check Google Script logs."
+            st.error(f"Backend Error: {err_msg}")
     except Exception as e:
         st.error(f"Transaction failed: {e}")
 
@@ -1771,7 +1772,6 @@ with tab_entry:
         avail_l = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
         avail_g = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
-    # Uniform 4-Column Layout for specs
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
@@ -1821,7 +1821,6 @@ with tab_entry:
         if f"wt_in_{key_suffix}" not in st.session_state:
             st.session_state[f"wt_in_{key_suffix}"] = 0.0
 
-        # Uniform 4-Column Layout for entry specifics
         col_e1, col_e2, col_e3, col_e4 = st.columns(4)
         
         with col_e1:
@@ -1829,9 +1828,9 @@ with tab_entry:
         with col_e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs, args=(final_w, final_l, final_g))
         
-        # User is now free to edit the auto-calculated weight or submit just a weight change
+        # Unlocked Weight Input Box
         with col_e3:
-            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.01, format="%.3f", key=f"wt_in_{key_suffix}")
+            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_in_{key_suffix}")
         with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
@@ -1860,7 +1859,7 @@ with tab_entry:
                     "weight_change": float(weight_val),
                     "new_grus": float(new_grus),
                     "new_pcs": int(new_pcs),
-                    "new_weight": float(new_weight),
+                    "new_weight": float(round(new_weight, 3)),
                     "remark": remark.strip()
                 }
                 send_update_to_sheet(payload)
@@ -1915,7 +1914,7 @@ with tab_history:
             with f_col7:
                 search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
             with f_col8:
-                st.write("")  # Keep 4-column symmetry 
+                st.write("")
 
         if f_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(f_type)]
@@ -1949,7 +1948,7 @@ with tab_history:
 # ==========================================
 ################################## Purchase Order & Verification System #########################################
 # ==========================================
-PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxHGdsY3noEmyM2hYIZAQyNnGCYPBUcbzc71l8YyPyPXp7FhHOvcZVhrgHmsYjUUSwt/exec"
+PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyjlawSLUajBvH6CgN4wdMU3Foo5O8daYD1LNdR-Wrc4zEYpxdSHgZDoTi96k4iP7TU/exec"
 
 CREDITORS_LIST = [
     "Select Creditor...", "BALAJI ENTERPRISE", "DHANUKA UDYOG PRIVATE LIMITED", 
