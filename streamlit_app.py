@@ -1668,16 +1668,6 @@ COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", 
 # ------------------------------------------------------
 # Helper Functions & Callbacks
 # ------------------------------------------------------
-def sync_grus():
-    key_suf = st.session_state.form_key
-    g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
-    st.session_state[f"pcs_in_{key_suf}"] = int(round(g_val * 144))
-
-def sync_pcs():
-    key_suf = st.session_state.form_key
-    pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
-    st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
-
 def calculate_weight(w, l, gsm, pcs):
     """Calculates weight based on: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
     try:
@@ -1686,6 +1676,29 @@ def calculate_weight(w, l, gsm, pcs):
         return round(weight, 3)
     except (ValueError, TypeError):
         return 0.000
+
+def sync_grus():
+    key_suf = st.session_state.form_key
+    g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
+    pcs_val = int(round(g_val * 144))
+    st.session_state[f"pcs_in_{key_suf}"] = pcs_val
+    
+    # Auto-calculate weight when Grus changes
+    w = st.session_state.get(f"active_w_{key_suf}", 0.0)
+    l = st.session_state.get(f"active_l_{key_suf}", 0.0)
+    gsm = st.session_state.get(f"active_gsm_{key_suf}", 0.0)
+    st.session_state[f"w_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
+
+def sync_pcs():
+    key_suf = st.session_state.form_key
+    pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
+    st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
+    
+    # Auto-calculate weight when Pcs changes
+    w = st.session_state.get(f"active_w_{key_suf}", 0.0)
+    l = st.session_state.get(f"active_l_{key_suf}", 0.0)
+    gsm = st.session_state.get(f"active_gsm_{key_suf}", 0.0)
+    st.session_state[f"w_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
 
 # ------------------------------------------------------
 # Data Fetch & Push Functions
@@ -1768,6 +1781,7 @@ with tab_entry:
         avail_l = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
         avail_g = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
+    # Uniform 4-Column Layout
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
@@ -1789,6 +1803,11 @@ with tab_entry:
     if not (final_p and final_w and final_l and final_g):
         st.info("Fill out all 4 specifications above to make an entry.")
     else:
+        # Cache active specs in session state for callback calculations
+        st.session_state[f"active_w_{key_suffix}"] = final_w
+        st.session_state[f"active_l_{key_suffix}"] = final_l
+        st.session_state[f"active_gsm_{key_suffix}"] = final_g
+
         match = sheet_df[
             (sheet_df["Product"].astype(str).str.strip() == final_p.strip()) &
             (sheet_df["Width"].astype(str).str.strip() == final_w.strip()) &
@@ -1804,62 +1823,43 @@ with tab_entry:
 
         st.markdown("##### 📝 Entry Details")
 
-        col_t1, col_t2, col_t3 = st.columns([2, 2, 2])
+        col_t1, col_t2 = st.columns(2)
         with col_t1:
             action_type = st.radio("Transaction Type", ["Purchased", "Used"], horizontal=True, key=f"type_{key_suffix}")
         with col_t2:
             txn_date = st.date_input("Date", value=date.today(), key=f"dt_{key_suffix}")
-        with col_t3:
-            st.write("") # Padding to align toggle with inputs
-            adjust_weight = st.toggle("⚖️ Manual Weight Override", key=f"adj_wt_{key_suffix}")
 
         if f"g_in_{key_suffix}" not in st.session_state:
             st.session_state[f"g_in_{key_suffix}"] = 0.0
         if f"pcs_in_{key_suffix}" not in st.session_state:
             st.session_state[f"pcs_in_{key_suffix}"] = 0
+        if f"w_in_{key_suffix}" not in st.session_state:
+            st.session_state[f"w_in_{key_suffix}"] = 0.000
 
+        # Uniform 4-Column Layout
         col_e1, col_e2, col_e3, col_e4 = st.columns(4)
         
         with col_e1:
             grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus)
         with col_e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs)
-        
-        # Calculate auto-weight
-        txn_weight_calc = calculate_weight(final_w, final_l, final_g, pcs_val)
-        
         with col_e3:
-            if adjust_weight:
-                txn_weight = st.number_input("Weight (Kg)", value=float(txn_weight_calc), step=0.5, format="%.3f", key=f"wt_manual_{key_suffix}")
-            else:
-                st.number_input("Weight (Kg)", value=float(txn_weight_calc), disabled=True, format="%.3f", key=f"wt_auto_{key_suffix}")
-                txn_weight = txn_weight_calc
-
+            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"w_in_{key_suffix}")
         with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
-            if grus_val == 0 and pcs_val == 0 and txn_weight == 0:
-                st.warning("Please specify a quantity or weight higher than 0.")
-            elif action_type == "Used" and pcs_val > curr_pcs:
-                st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
-            elif action_type == "Used" and adjust_weight and txn_weight > curr_weight:
-                st.error(f"Cannot subtract {txn_weight} Kg. Available stock is only {curr_weight:.3f} Kg.")
+            if grus_val == 0 and pcs_val == 0 and weight_val == 0:
+                st.warning("Please specify a quantity (Grus/Pcs) or Weight higher than 0.")
+            elif action_type == "Used" and (pcs_val > curr_pcs or weight_val > curr_weight):
+                if pcs_val > curr_pcs:
+                    st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
+                else:
+                    st.error(f"Cannot subtract {weight_val:.3f} Kg. Available weight is only {curr_weight:.3f} Kg.")
             else:
-                # Append "Weight Adjusted" to remark if toggled ON
-                final_remark = remark.strip()
-                if adjust_weight:
-                    final_remark = f"{final_remark} (Weight Adjusted)" if final_remark else "Weight Adjusted"
-
                 new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
                 new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
-                
-                # If weight was manually adjusted, apply manual diff. 
-                # Otherwise, strictly calculate off the new total pieces to prevent float drift.
-                if adjust_weight:
-                    new_weight = curr_weight + txn_weight if action_type == "Purchased" else curr_weight - txn_weight
-                else:
-                    new_weight = calculate_weight(final_w, final_l, final_g, new_pcs)
+                new_weight = curr_weight + weight_val if action_type == "Purchased" else curr_weight - weight_val
 
                 payload = {
                     "action": "update_stock",
@@ -1871,11 +1871,11 @@ with tab_entry:
                     "gsm": final_g.strip(),
                     "grus_change": float(grus_val),
                     "pcs_change": int(pcs_val),
-                    "weight_change": float(txn_weight),
-                    "new_grus": float(new_grus),
-                    "new_pcs": int(new_pcs),
-                    "new_weight": float(new_weight),
-                    "remark": final_remark
+                    "weight_change": float(weight_val),
+                    "new_grus": max(0.0, float(new_grus)),
+                    "new_pcs": max(0, int(new_pcs)),
+                    "new_weight": max(0.0, round(float(new_weight), 3)),
+                    "remark": remark.strip()
                 }
                 send_update_to_sheet(payload)
 
@@ -1929,7 +1929,7 @@ with tab_history:
             with f_col7:
                 search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
             with f_col8:
-                st.write("")  # Keep 4-column symmetry 
+                st.write("")
 
         if f_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(f_type)]
