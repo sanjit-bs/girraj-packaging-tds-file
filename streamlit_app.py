@@ -1668,16 +1668,6 @@ COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", 
 # ------------------------------------------------------
 # Helper Functions & Callbacks
 # ------------------------------------------------------
-def sync_grus():
-    key_suf = st.session_state.form_key
-    g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
-    st.session_state[f"pcs_in_{key_suf}"] = int(round(g_val * 144))
-
-def sync_pcs():
-    key_suf = st.session_state.form_key
-    pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
-    st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
-
 def calculate_weight(w, l, gsm, pcs):
     """Calculates weight based on: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
     try:
@@ -1686,6 +1676,19 @@ def calculate_weight(w, l, gsm, pcs):
         return round(weight, 3)
     except (ValueError, TypeError):
         return 0.000
+
+def sync_grus(w, l, gsm):
+    key_suf = st.session_state.form_key
+    g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
+    pcs = int(round(g_val * 144))
+    st.session_state[f"pcs_in_{key_suf}"] = pcs
+    st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs)
+
+def sync_pcs(w, l, gsm):
+    key_suf = st.session_state.form_key
+    pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
+    st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
+    st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
 
 # ------------------------------------------------------
 # Data Fetch & Push Functions
@@ -1815,34 +1818,34 @@ with tab_entry:
             st.session_state[f"g_in_{key_suffix}"] = 0.0
         if f"pcs_in_{key_suffix}" not in st.session_state:
             st.session_state[f"pcs_in_{key_suffix}"] = 0
+        if f"wt_in_{key_suffix}" not in st.session_state:
+            st.session_state[f"wt_in_{key_suffix}"] = 0.0
 
         # Uniform 4-Column Layout for entry specifics
         col_e1, col_e2, col_e3, col_e4 = st.columns(4)
         
         with col_e1:
-            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus)
+            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus, args=(final_w, final_l, final_g))
         with col_e2:
-            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs)
+            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs, args=(final_w, final_l, final_g))
         
-        # Calculate weight automatically for UI viewing
-        txn_weight = calculate_weight(final_w, final_l, final_g, pcs_val)
-        
+        # User is now free to edit the auto-calculated weight or submit just a weight change
         with col_e3:
-            st.number_input("Weight (Kg)", value=txn_weight, disabled=True, format="%.3f")
+            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.01, format="%.3f", key=f"wt_in_{key_suffix}")
         with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
-            if grus_val == 0 and pcs_val == 0:
-                st.warning("Please specify a quantity higher than 0.")
+            if grus_val == 0 and pcs_val == 0 and weight_val == 0:
+                st.warning("Please specify a quantity (Grus, Pcs, or Weight) higher than 0.")
             elif action_type == "Used" and pcs_val > curr_pcs:
                 st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
+            elif action_type == "Used" and weight_val > curr_weight:
+                st.error(f"Cannot subtract {weight_val:.3f} Kg. Available stock is only {curr_weight:.3f} Kg.")
             else:
                 new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
                 new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
-                
-                # Recalculate total new weight to prevent floating point drifting
-                new_weight = calculate_weight(final_w, final_l, final_g, new_pcs)
+                new_weight = curr_weight + weight_val if action_type == "Purchased" else curr_weight - weight_val
 
                 payload = {
                     "action": "update_stock",
@@ -1854,7 +1857,7 @@ with tab_entry:
                     "gsm": final_g.strip(),
                     "grus_change": float(grus_val),
                     "pcs_change": int(pcs_val),
-                    "weight_change": float(txn_weight),
+                    "weight_change": float(weight_val),
                     "new_grus": float(new_grus),
                     "new_pcs": int(new_pcs),
                     "new_weight": float(new_weight),
