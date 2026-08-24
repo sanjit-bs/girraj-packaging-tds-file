@@ -1665,15 +1665,10 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwp3QoPvjhC_GJaFdj4z7
 COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
 
-# ------------------------------------------------------
-# Helper Functions & Callbacks
-# ------------------------------------------------------
 def calculate_weight(w, l, gsm, pcs):
-    """Calculates weight based on: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
     try:
         w_float, l_float, gsm_float, pcs_int = float(w), float(l), float(gsm), int(pcs)
-        weight = (((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int
-        return round(weight, 3)
+        return round((((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int, 3)
     except (ValueError, TypeError):
         return 0.000
 
@@ -1690,9 +1685,6 @@ def sync_pcs(w, l, gsm):
     st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
     st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
 
-# ------------------------------------------------------
-# Data Fetch & Push Functions
-# ------------------------------------------------------
 @st.cache_data(ttl=5)
 def fetch_all_data():
     try:
@@ -1713,9 +1705,10 @@ def fetch_all_data():
         st.error(f"Error fetching data: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
-def send_update_to_sheet(payload):
+def send_update_to_sheet(params):
     try:
-        res = requests.post(APPS_SCRIPT_URL, json=payload, timeout=15)
+        # Use GET requests to avoid Apps Script redirect/POST blocking issues
+        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=20)
         res_data = res.json()
         if res_data.get("status") == "success":
             st.toast("✅ Stock updated successfully!")
@@ -1723,19 +1716,16 @@ def send_update_to_sheet(payload):
             st.session_state.form_key += 1
             st.rerun()
         else:
-            err_msg = res_data.get("message") or "Unknown server error. Check Google Script logs."
+            err_msg = res_data.get("message", "Unknown script error.")
             st.error(f"Backend Error: {err_msg}")
     except Exception as e:
         st.error(f"Transaction failed: {e}")
 
-# ------------------------------------------------------
 # Main Application Setup
-# ------------------------------------------------------
 sheet_df, history_df = fetch_all_data()
 
 st.title("📄 Paper Sheet Stock Manager")
 
-# Converter Expander
 with st.expander("📐 Quick CM to Inches Converter"):
     col_cm1, col_cm2 = st.columns(2)
     with col_cm1:
@@ -1743,9 +1733,7 @@ with st.expander("📐 Quick CM to Inches Converter"):
     with col_cm2:
         l_cm = st.number_input("Enter Length in CM", min_value=0.0, step=0.1, format="%.2f", key="standalone_l_cm_converter")
     if w_cm > 0 or l_cm > 0:
-        w_inch = round(w_cm / 2.54, 2)
-        l_inch = round(l_cm / 2.54, 2)
-        st.success(f"**Converted Dimensions:** {w_inch:.2f}″ (W) × {l_inch:.2f}″ (L)\n\n*Original:* {w_cm:.2f} cm × {l_cm:.2f} cm")
+        st.success(f"**Converted Dimensions:** {w_cm / 2.54:.2f}″ (W) × {l_cm / 2.54:.2f}″ (L)\n\n*Original:* {w_cm:.2f} cm × {l_cm:.2f} cm")
 
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
@@ -1753,9 +1741,6 @@ key_suffix = st.session_state.form_key
 
 tab_entry, tab_history = st.tabs(["⚡ Record Transaction", "📜 Stock & History Log"])
 
-# ------------------------------------------------------
-# TAB 1: RECORD TRANSACTION
-# ------------------------------------------------------
 with tab_entry:
     st.markdown("##### 🔍 Product & Specifications Selection")
 
@@ -1827,8 +1812,6 @@ with tab_entry:
             grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus, args=(final_w, final_l, final_g))
         with col_e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs, args=(final_w, final_l, final_g))
-        
-        # Unlocked Weight Input Box
         with col_e3:
             weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_in_{key_suffix}")
         with col_e4:
@@ -1846,7 +1829,7 @@ with tab_entry:
                 new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
                 new_weight = curr_weight + weight_val if action_type == "Purchased" else curr_weight - weight_val
 
-                payload = {
+                params = {
                     "action": "update_stock",
                     "date": txn_date.strftime("%d/%m/%Y"),
                     "type": action_type,
@@ -1862,11 +1845,8 @@ with tab_entry:
                     "new_weight": float(round(new_weight, 3)),
                     "remark": remark.strip()
                 }
-                send_update_to_sheet(payload)
+                send_update_to_sheet(params)
 
-# ------------------------------------------------------
-# TAB 2: FIELD-WISE FILTERED TRANSACTION HISTORY LOG
-# ------------------------------------------------------
 with tab_history:
     st.markdown("### 📋 Current Master Stock (`sheet_stock`)")
     
