@@ -1660,7 +1660,7 @@ with tab_history:
 
 ####################################### Paper Sheet Stock ######################################
 # Update with your deployed Web App URL
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwp3QoPvjhC_GJaFdj4z7tGB9MhIecBIf7IbgeLeg-hsD7qf8DGUzdBQaOx3A0xOp4R/exec"
 
 COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
 COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
