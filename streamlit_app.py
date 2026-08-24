@@ -1724,7 +1724,8 @@ def send_update_to_sheet(params):
 # Main Application Setup
 sheet_df, history_df = fetch_all_data()
 
-st.title("📄 Paper Sheet Stock Manager")
+st.markdown("---")
+st.subheader("📄 Paper Sheet Stock Manager")
 
 with st.expander("📐 Quick CM to Inches Converter"):
     col_cm1, col_cm2 = st.columns(2)
