@@ -1394,61 +1394,59 @@ def fetch_all_data():
 # ------------------------------------------------------
 # Submit Record via Apps Script
 # ------------------------------------------------------
+# def get_retry_session():
+#   session = requests.Session()
+#   retries = Retry(
+#       total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504]
+#   )
+#   session.mount("https://", HTTPAdapter(max_retries=retries))
+#   return session
 
 
-def get_retry_session():
-  session = requests.Session()
-  retries = Retry(
-      total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504]
-  )
-  session.mount("https://", HTTPAdapter(max_retries=retries))
-  return session
+# def send_update_to_sheet(params):
+#   try:
+#     session = get_retry_session()
+#     # Increased timeout to 45 seconds to accommodate Google Apps Script cold starts
+#     res = session.get(APPS_SCRIPT_URL, params=params, timeout=45)
+#     res_data = res.json()
+
+#     if res_data.get("status") == "success":
+#       st.toast("✅ Stock updated successfully!")
+#       st.cache_data.clear()
+#       st.session_state.form_key += 1
+#       st.rerun()
+#     else:
+#       err_msg = res_data.get("message", "Unknown script error.")
+#       st.error(f"Backend Error: {err_msg}")
+#   except requests.exceptions.Timeout:
+#     st.error(
+#         "⏰ Request timed out. Google Script took too long to respond. Please"
+#         " check your sheet."
+#     )
+#   except Exception as e:
+#     st.error(f"Transaction failed: {e}")
 
 
-def send_update_to_sheet(params):
-  try:
-    session = get_retry_session()
-    # Increased timeout to 45 seconds to accommodate Google Apps Script cold starts
-    res = session.get(APPS_SCRIPT_URL, params=params, timeout=45)
-    res_data = res.json()
+def send_update_to_sheet(payload):
+    try:
+        res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15)
 
-    if res_data.get("status") == "success":
-      st.toast("✅ Stock updated successfully!")
-      st.cache_data.clear()
-      st.session_state.form_key += 1
-      st.rerun()
-    else:
-      err_msg = res_data.get("message", "Unknown script error.")
-      st.error(f"Backend Error: {err_msg}")
-  except requests.exceptions.Timeout:
-    st.error(
-        "⏰ Request timed out. Google Script took too long to respond. Please"
-        " check your sheet."
-    )
-  except Exception as e:
-    st.error(f"Transaction failed: {e}")
+        if "text/html" in res.headers.get("Content-Type", ""):
+            st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
+            return
 
+        res_data = res.json()
 
-# def send_update_to_sheet(payload):
-#     try:
-#         res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15)
+        if res_data.get("status") == "success":
+            st.toast("✅ Updated successfully!")
+            st.cache_data.clear()
+            st.session_state.form_key += 1
+            st.rerun()
+        else:
+            st.error(f"❌ Apps Script Error: {res_data.get('message', 'Unknown Error')}")
 
-#         if "text/html" in res.headers.get("Content-Type", ""):
-#             st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
-#             return
-
-#         res_data = res.json()
-
-#         if res_data.get("status") == "success":
-#             st.toast("✅ Updated successfully!")
-#             st.cache_data.clear()
-#             st.session_state.form_key += 1
-#             st.rerun()
-#         else:
-#             st.error(f"❌ Apps Script Error: {res_data.get('message', 'Unknown Error')}")
-
-#     except Exception as e:
-#         st.error(f"Failed to send update: {e}")
+    except Exception as e:
+        st.error(f"Failed to send update: {e}")
 
 
 # ------------------------------------------------------
