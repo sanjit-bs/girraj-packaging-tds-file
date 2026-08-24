@@ -1268,7 +1268,7 @@ COLUMNS_HISTORY = [
 # Helpers: Breakup Weight Processing & Callbacks
 # ------------------------------------------------------
 def parse_breakup_weights(breakup_str):
-  """Parses a string like '12.5, 15.0, 10.2' into total weight sum and count.
+  """Parses a string like '12.5, 15.0, 10.2' into a total weight sum and count.
 
   Returns (total_sum, count, cleaned_str)
   """
@@ -1292,10 +1292,11 @@ def parse_breakup_weights(breakup_str):
 
 
 def sync_mod_breakup():
-  """Callback to auto-sum and auto-count for Existing Stock updates."""
+  """Callback to auto-sum and auto-count for Existing Stock updates"""
   key_suf = st.session_state.form_key
   raw = st.session_state.get(f"bk_mod_{key_suf}", "")
 
+  # Only override the numbers if there is actually breakup text entered
   if raw.strip():
     calc_w, calc_q, _ = parse_breakup_weights(raw)
     st.session_state[f"q_mod_{key_suf}"] = int(calc_q)
@@ -1303,10 +1304,11 @@ def sync_mod_breakup():
 
 
 def sync_new_breakup():
-  """Callback to auto-sum and auto-count for New Stock additions."""
+  """Callback to auto-sum and auto-count for New Stock additions"""
   key_suf = st.session_state.form_key
   raw = st.session_state.get(f"bk_new_{key_suf}", "")
 
+  # Only override the numbers if there is actually breakup text entered
   if raw.strip():
     calc_w, calc_q, _ = parse_breakup_weights(raw)
     st.session_state[f"q_new_{key_suf}"] = int(calc_q)
@@ -1347,16 +1349,6 @@ def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
 
   updated_str = ", ".join([f"{w:.2f}" for w in updated_list])
   return updated_str, missing_weights
-
-
-# ------------------------------------------------------
-# Helper: Robust Float Matching for Specs
-# ------------------------------------------------------
-def safe_float(val):
-  try:
-    return float(str(val).strip())
-  except (ValueError, TypeError):
-    return 0.0
 
 
 # ------------------------------------------------------
@@ -1402,6 +1394,8 @@ def fetch_all_data():
 # ------------------------------------------------------
 # Submit Record via Apps Script
 # ------------------------------------------------------
+
+
 def get_retry_session():
   session = requests.Session()
   retries = Retry(
@@ -1414,6 +1408,7 @@ def get_retry_session():
 def send_update_to_sheet(params):
   try:
     session = get_retry_session()
+    # Increased timeout to 45 seconds to accommodate Google Apps Script cold starts
     res = session.get(APPS_SCRIPT_URL, params=params, timeout=45)
     res_data = res.json()
 
@@ -1432,6 +1427,28 @@ def send_update_to_sheet(params):
     )
   except Exception as e:
     st.error(f"Transaction failed: {e}")
+
+
+# def send_update_to_sheet(payload):
+#     try:
+#         res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15)
+
+#         if "text/html" in res.headers.get("Content-Type", ""):
+#             st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
+#             return
+
+#         res_data = res.json()
+
+#         if res_data.get("status") == "success":
+#             st.toast("✅ Updated successfully!")
+#             st.cache_data.clear()
+#             st.session_state.form_key += 1
+#             st.rerun()
+#         else:
+#             st.error(f"❌ Apps Script Error: {res_data.get('message', 'Unknown Error')}")
+
+#     except Exception as e:
+#         st.error(f"Failed to send update: {e}")
 
 
 # ------------------------------------------------------
@@ -1528,15 +1545,10 @@ with tab_entry:
   if has_unselected:
     st.info("👆 Please select or type all details to proceed.")
   else:
-    # Numeric matching prevents float string mismatch bugs (e.g., 19.75 vs 19.750)
-    target_size_num = safe_float(final_size)
-    target_gsm_num = safe_float(final_gsm)
-    target_bf_num = safe_float(final_bf)
-
     match_df = rill_df[
-        (rill_df["Size"].apply(safe_float) == target_size_num)
-        & (rill_df["GSM"].apply(safe_float) == target_gsm_num)
-        & (rill_df["BF"].apply(safe_float) == target_bf_num)
+        (rill_df["Size"].astype(str).str.strip() == final_size.strip())
+        & (rill_df["GSM"].astype(str).str.strip() == final_gsm.strip())
+        & (rill_df["BF"].astype(str).str.strip() == final_bf.strip())
     ]
 
     # ==========================================
@@ -1578,6 +1590,7 @@ with tab_entry:
           curr_breakup, raw_breakup, action_type
       )
 
+      # Initialize states so the callbacks can safely overwrite them
       if f"q_mod_{key_suffix_rill}" not in st.session_state:
         st.session_state[f"q_mod_{key_suffix_rill}"] = 0
       if f"w_mod_{key_suffix_rill}" not in st.session_state:
@@ -1645,16 +1658,8 @@ with tab_entry:
               "size": final_size.strip(),
               "gsm": final_gsm.strip(),
               "bf": final_bf.strip(),
-              "qty_change": (
-                  int(qty_change)
-                  if action_type == "Purchased (+)"
-                  else -int(qty_change)
-              ),
-              "weight_change": (
-                  float(weight_change)
-                  if action_type == "Purchased (+)"
-                  else -float(weight_change)
-              ),
+              "qty_change": int(qty_change),
+              "weight_change": float(weight_change),
               "new_qty": int(final_qty),
               "new_weight": float(final_weight),
               "breakup_weight": clean_breakup_str,
@@ -1688,6 +1693,7 @@ with tab_entry:
 
       _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
 
+      # Initialize states so the callbacks can safely overwrite them
       if f"q_new_{key_suffix_rill}" not in st.session_state:
         st.session_state[f"q_new_{key_suffix_rill}"] = 0
       if f"w_new_{key_suffix_rill}" not in st.session_state:
@@ -1760,6 +1766,7 @@ with tab_history:
   else:
     filtered_df = history_df.copy()
 
+    # Data Cleaning
     filtered_df["Date"] = (
         filtered_df["Date"].astype(str).str.replace("'", "").str.strip()
     )
@@ -1861,7 +1868,7 @@ with tab_history:
         use_container_width=True,
         hide_index=True,
     )
-
+      
 ####################################### Paper Sheet Stock ######################################
 # Update with your deployed Web App URL
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwp3QoPvjhC_GJaFdj4z7tGB9MhIecBIf7IbgeLeg-hsD7qf8DGUzdBQaOx3A0xOp4R/exec"
