@@ -1666,39 +1666,25 @@ COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", 
 COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
 
 # ------------------------------------------------------
-# Helper Functions & Callbacks
+# Bidirectional Calculations Callback Functions
 # ------------------------------------------------------
-def calculate_weight(w, l, gsm, pcs):
-    """Calculates weight based on: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
-    try:
-        w_float, l_float, gsm_float, pcs_int = float(w), float(l), float(gsm), int(pcs)
-        weight = (((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int
-        return round(weight, 3)
-    except (ValueError, TypeError):
-        return 0.000
-
 def sync_grus():
     key_suf = st.session_state.form_key
     g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
-    pcs_val = int(round(g_val * 144))
-    st.session_state[f"pcs_in_{key_suf}"] = pcs_val
-    
-    # Auto-calculate weight when Grus changes
-    w = st.session_state.get(f"active_w_{key_suf}", 0.0)
-    l = st.session_state.get(f"active_l_{key_suf}", 0.0)
-    gsm = st.session_state.get(f"active_gsm_{key_suf}", 0.0)
-    st.session_state[f"w_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
+    st.session_state[f"pcs_in_{key_suf}"] = int(round(g_val * 144))
 
 def sync_pcs():
     key_suf = st.session_state.form_key
     pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
     st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
-    
-    # Auto-calculate weight when Pcs changes
-    w = st.session_state.get(f"active_w_{key_suf}", 0.0)
-    l = st.session_state.get(f"active_l_{key_suf}", 0.0)
-    gsm = st.session_state.get(f"active_gsm_{key_suf}", 0.0)
-    st.session_state[f"w_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
+
+def calculate_weight(w, l, gsm, pcs):
+    """Formula: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
+    try:
+        w_f, l_f, gsm_f, pcs_i = float(w), float(l), float(gsm), int(pcs)
+        return round((((w_f * l_f * gsm_f) / 1550) / 1000) * pcs_i, 3)
+    except (ValueError, TypeError):
+        return 0.000
 
 # ------------------------------------------------------
 # Data Fetch & Push Functions
@@ -1781,7 +1767,7 @@ with tab_entry:
         avail_l = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
         avail_g = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
-    # Uniform 4-Column Layout
+    # Specification 4-Column Layout
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
@@ -1803,11 +1789,6 @@ with tab_entry:
     if not (final_p and final_w and final_l and final_g):
         st.info("Fill out all 4 specifications above to make an entry.")
     else:
-        # Cache active specs in session state for callback calculations
-        st.session_state[f"active_w_{key_suffix}"] = final_w
-        st.session_state[f"active_l_{key_suffix}"] = final_l
-        st.session_state[f"active_gsm_{key_suffix}"] = final_g
-
         match = sheet_df[
             (sheet_df["Product"].astype(str).str.strip() == final_p.strip()) &
             (sheet_df["Width"].astype(str).str.strip() == final_w.strip()) &
@@ -1833,10 +1814,11 @@ with tab_entry:
             st.session_state[f"g_in_{key_suffix}"] = 0.0
         if f"pcs_in_{key_suffix}" not in st.session_state:
             st.session_state[f"pcs_in_{key_suffix}"] = 0
-        if f"w_in_{key_suffix}" not in st.session_state:
-            st.session_state[f"w_in_{key_suffix}"] = 0.000
 
-        # Uniform 4-Column Layout
+        # Current calculated weight suggestion
+        calc_w = calculate_weight(final_w, final_l, final_g, st.session_state[f"pcs_in_{key_suffix}"])
+
+        # Entry 4-Column Layout
         col_e1, col_e2, col_e3, col_e4 = st.columns(4)
         
         with col_e1:
@@ -1844,18 +1826,16 @@ with tab_entry:
         with col_e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs)
         with col_e3:
-            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"w_in_{key_suffix}")
+            # Allows custom manual typing; defaults to calculated formula value
+            weight_val = st.number_input("Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", value=calc_w, key=f"w_in_{key_suffix}")
         with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
             if grus_val == 0 and pcs_val == 0 and weight_val == 0:
                 st.warning("Please specify a quantity (Grus/Pcs) or Weight higher than 0.")
-            elif action_type == "Used" and (pcs_val > curr_pcs or weight_val > curr_weight):
-                if pcs_val > curr_pcs:
-                    st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
-                else:
-                    st.error(f"Cannot subtract {weight_val:.3f} Kg. Available weight is only {curr_weight:.3f} Kg.")
+            elif action_type == "Used" and pcs_val > curr_pcs and curr_pcs > 0:
+                st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
             else:
                 new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
                 new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
