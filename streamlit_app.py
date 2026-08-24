@@ -1662,11 +1662,11 @@ with tab_history:
 # Update with your deployed Web App URL
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwgvKP5vzdFw0GyALiqbyzK5tRgxG3qZIl8ufPzOntdkTxlhviuEsjadgz6oPyDziNJ/exec"
 
-COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
-COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Weight", "Remark"]
+COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"]
+COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Remark"]
 
 # ------------------------------------------------------
-# Helper Functions & Callbacks
+# Bidirectional Calculations Callback Functions
 # ------------------------------------------------------
 def sync_grus():
     key_suf = st.session_state.form_key
@@ -1677,15 +1677,6 @@ def sync_pcs():
     key_suf = st.session_state.form_key
     pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
     st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
-
-def calculate_weight(w, l, gsm, pcs):
-    """Calculates weight based on: (((Width * Length * GSM) / 1550) / 1000) * Pcs"""
-    try:
-        w_float, l_float, gsm_float, pcs_int = float(w), float(l), float(gsm), int(pcs)
-        weight = (((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int
-        return round(weight, 3)
-    except (ValueError, TypeError):
-        return 0.000
 
 # ------------------------------------------------------
 # Data Fetch & Push Functions
@@ -1700,10 +1691,10 @@ def fetch_all_data():
 
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
-                master_df[col] = 0.0 if col in ["Grus", "Pcs", "Weight"] else ""
+                master_df[col] = 0 if col in ["Grus", "Pcs"] else ""
         for col in COLUMNS_HISTORY:
             if col not in history_df.columns:
-                history_df[col] = 0.0 if col in ["Grus", "Pcs", "Weight"] else ""
+                history_df[col] = 0 if col in ["Grus", "Pcs"] else ""
 
         return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
     except Exception as e:
@@ -1750,13 +1741,14 @@ key_suffix = st.session_state.form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Transaction", "📜 Stock & History Log"])
 
 # ------------------------------------------------------
-# TAB 1: RECORD TRANSACTION
+# TAB 1: RECORD TRANSACTION WITH UNIFORM COLUMN WIDTHS
 # ------------------------------------------------------
 with tab_entry:
     st.markdown("##### 🔍 Product & Specifications Selection")
 
     avail_p = sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
+    # Auto-filter dependent options based on selected Product
     if f"p_sel_{key_suffix}" in st.session_state and st.session_state[f"p_sel_{key_suffix}"] not in ["Select Product...", "➕ Add New..."]:
         selected_product = st.session_state[f"p_sel_{key_suffix}"]
         matched_specs = sheet_df[sheet_df["Product"].astype(str).str.strip() == selected_product.strip()]
@@ -1768,7 +1760,7 @@ with tab_entry:
         avail_l = sorted(list(set(sheet_df["Length"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
         avail_g = sorted(list(set(sheet_df["GSM"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
 
-    # Uniform 4-Column Layout for specs
+    # Uniform 4-Column Layout
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
 
     with col_s0:
@@ -1799,9 +1791,8 @@ with tab_entry:
 
         curr_grus = float(pd.to_numeric(match["Grus"]).sum()) if not match.empty else 0.0
         curr_pcs = int(pd.to_numeric(match["Pcs"]).sum()) if not match.empty else 0
-        curr_weight = float(pd.to_numeric(match["Weight"]).sum()) if not match.empty else 0.0
 
-        st.info(f"**Current Existing Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs | {curr_weight:.3f} Kg")
+        st.info(f"**Current Existing Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs")
 
         st.markdown("##### 📝 Entry Details")
 
@@ -1816,33 +1807,22 @@ with tab_entry:
         if f"pcs_in_{key_suffix}" not in st.session_state:
             st.session_state[f"pcs_in_{key_suffix}"] = 0
 
-        # Uniform 4-Column Layout for entry specifics
-        col_e1, col_e2, col_e3, col_e4 = st.columns(4)
-        
+        col_e1, col_e2, col_e3 = st.columns([2, 2, 3])
         with col_e1:
             grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus)
         with col_e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs)
-        
-        # Calculate weight automatically for UI viewing
-        txn_weight = calculate_weight(final_w, final_l, final_g, pcs_val)
-        
         with col_e3:
-            st.number_input("Weight (Kg)", value=txn_weight, disabled=True, format="%.3f")
-        with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
             if grus_val == 0 and pcs_val == 0:
                 st.warning("Please specify a quantity higher than 0.")
-            elif action_type == "Used" and pcs_val > curr_pcs:
-                st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
+            elif action_type == "Used" and grus_val > curr_grus:
+                st.error(f"Cannot subtract {grus_val} Grus. Available stock is only {curr_grus:.2f} Grus.")
             else:
                 new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
                 new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
-                
-                # Recalculate total new weight to prevent floating point drifting
-                new_weight = calculate_weight(final_w, final_l, final_g, new_pcs)
 
                 payload = {
                     "action": "update_stock",
@@ -1854,10 +1834,8 @@ with tab_entry:
                     "gsm": final_g.strip(),
                     "grus_change": float(grus_val),
                     "pcs_change": int(pcs_val),
-                    "weight_change": float(txn_weight),
                     "new_grus": float(new_grus),
                     "new_pcs": int(new_pcs),
-                    "new_weight": float(new_weight),
                     "remark": remark.strip()
                 }
                 send_update_to_sheet(payload)
@@ -1867,19 +1845,7 @@ with tab_entry:
 # ------------------------------------------------------
 with tab_history:
     st.markdown("### 📋 Current Master Stock (`sheet_stock`)")
-    
-    display_master_df = sheet_df.copy()
-    display_master_df["Weight"] = pd.to_numeric(display_master_df["Weight"], errors="coerce").fillna(0.0)
-    
-    st.dataframe(
-        display_master_df, 
-        column_config={
-            "Grus": st.column_config.NumberColumn("Grus", format="%.2f"),
-            "Weight": st.column_config.NumberColumn("Weight (Kg)", format="%.3f"),
-        },
-        use_container_width=True, 
-        hide_index=True
-    )
+    st.dataframe(sheet_df, use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("### 📜 Field-Wise Filtered History Log (`sheet_history`)")
@@ -1912,7 +1878,7 @@ with tab_history:
             with f_col7:
                 search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
             with f_col8:
-                st.write("")  # Keep 4-column symmetry 
+                st.write("")  # Blank column maintaining strict 4-column symmetry
 
         if f_type:
             filtered_df = filtered_df[filtered_df["Type"].isin(f_type)]
@@ -1931,14 +1897,11 @@ with tab_history:
                 filtered_df.astype(str).apply(lambda row: row.str.contains(search_global, case=False).any(), axis=1)
             ]
 
-        filtered_df["Weight"] = pd.to_numeric(filtered_df["Weight"], errors="coerce").fillna(0.0)
-
         st.dataframe(
             filtered_df,
             column_config={
                 "Grus": st.column_config.NumberColumn("Grus", format="%.2f"),
                 "Pcs": st.column_config.NumberColumn("Pcs", format="%d"),
-                "Weight": st.column_config.NumberColumn("Weight (Kg)", format="%.3f"),
             },
             use_container_width=True,
             hide_index=True
