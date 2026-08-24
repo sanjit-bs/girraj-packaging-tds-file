@@ -1429,7 +1429,7 @@ def fetch_all_data():
 
 def send_update_to_sheet(payload):
     try:
-        res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=15)
+        res = requests.post(APPS_SCRIPT_URL, json=payload, allow_redirects=True, timeout=60)
 
         if "text/html" in res.headers.get("Content-Type", ""):
             st.error("⚠️ Failed to update: Received HTML response. Check Web App URL permissions.")
