@@ -1240,7 +1240,7 @@ else:
 # ------------------------------------------------------
 # Google Apps Script API Configuration
 # ------------------------------------------------------
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzDCxGzu7vP31Ui6ottPoDibQlgGnEu3PPmLPEFq7muq3Kp8eozCkNEke1anGAqI9TZ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxgc7mva9mumxyU37aaKmTGkcBM4BPGNq1kVCKauv5U-TiMWJ8RhiDPNPxy4gzcFeXe/exec"
 
 COLUMNS_MASTER = [
     "Size",
