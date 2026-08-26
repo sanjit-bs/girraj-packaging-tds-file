@@ -2332,5 +2332,6 @@ with tab2:
                                     st.error(f"Error updating record: {e}")
 
 # Added requested sub-heading and link
-st.caption("Quality Test Report Generator")
+st.markdown("---")
+st.subheader("Quality Test Report Generator")
 st.markdown("[Quality Test Report Generator App](https://idyllic-unicorn-9a9402.netlify.app)")
