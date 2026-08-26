@@ -2330,3 +2330,7 @@ with tab2:
                                             st.error("Failed to update status in Google Sheet.")
                                 except Exception as e:
                                     st.error(f"Error updating record: {e}")
+
+# Added requested sub-heading and link
+st.caption("Quality Test Report Generator")
+st.markdown("[Quality Test Report Generator App](https://idyllic-unicorn-9a9402.netlify.app)")
