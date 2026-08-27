@@ -1626,7 +1626,7 @@ with tab_entry:
           else curr_weight - weight_change
       )
 
-if st.button("Submit Record", type="primary", key="btn_update_rill"):
+ if st.button("Submit Record", type="primary", key="btn_update_rill"):
     if action_type is None:
         st.warning("Please select a Transaction Type (Purchased or Used) before submitting.")
     elif action_type == "Used (-)" and qty_change > curr_qty:
@@ -1661,11 +1661,11 @@ if st.button("Submit Record", type="primary", key="btn_update_rill"):
     # ==========================================
     # MODE B: ADD NEW ITEM
     # ==========================================
-    else:
-      st.warning(
+else:
+    st.warning(
           "💡 **New Combination Detected:** Create this new specification below."
       )
-      st.markdown("##### 📝 Initial Stock Entry for New Specification")
+    st.markdown("##### 📝 Initial Stock Entry for New Specification")
 
       col_n1, col_n2 = st.columns([1.5, 4.5])
       with col_n1:
