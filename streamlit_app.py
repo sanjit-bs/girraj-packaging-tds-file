@@ -1626,46 +1626,38 @@ with tab_entry:
           else curr_weight - weight_change
       )
 
-      if st.button("Submit Record", type="primary", key="btn_update_rill"):
-        if action_type == "Used (-)" and qty_change > curr_qty:
-          st.warning(
-              f"Cannot subtract {qty_change} rills! Available stock is only"
-              f" {curr_qty} rills."
-          )
-        elif action_type == "Used (-)" and weight_change > curr_weight:
-          st.warning(
-              f"Cannot subtract {weight_change:.2f} kg! Available weight is"
-              f" only {curr_weight:.2f} kg."
-          )
-        elif qty_change == 0 and weight_change == 0:
-          st.warning(
-              "Please enter weight breakups or a non-zero quantity/weight."
-          )
-        else:
-          if action_type == "Used (-)" and missing_weights:
+if st.button("Submit Record", type="primary", key="btn_update_rill"):
+    if action_type is None:
+        st.warning("Please select a Transaction Type (Purchased or Used) before submitting.")
+    elif action_type == "Used (-)" and qty_change > curr_qty:
+        st.warning(f"Cannot subtract {qty_change} rills! Available stock is only {curr_qty} rills.")
+    elif action_type == "Used (-)" and weight_change > curr_weight:
+        st.warning(f"Cannot subtract {weight_change:.2f} kg! Available weight is only {curr_weight:.2f} kg.")
+    elif qty_change == 0 and weight_change == 0:
+        st.warning("Please enter weight breakups or a non-zero quantity/weight.")
+    else:
+        if action_type == "Used (-)" and missing_weights:
             missing_str = ", ".join([f"{w:.2f}" for w in missing_weights])
-            st.info(
-                f"ℹ️ Note: Weight(s) [{missing_str}] were not originally in"
-                " the stock breakup list."
-            )
+            st.info(f"ℹ️ Note: Weight(s) [{missing_str}] were not originally in the stock breakup list.")
 
-          payload = {
-              "action": "update_stock",
-              "date": txn_date.strftime("%d/%m/%Y"),
-              "type": "Purchased" if action_type == "Purchased (+)" else "Used",
-              "size": final_size.strip(),
-              "gsm": final_gsm.strip(),
-              "bf": final_bf.strip(),
-              "qty_change": int(qty_change),
-              "weight_change": float(weight_change),
-              "new_qty": int(final_qty),
-              "new_weight": float(final_weight),
-              "breakup_weight": clean_breakup_str,
-              "new_breakup_weight": new_master_breakup,
-              "remark": new_remark.strip(),
-          }
-          send_update_to_sheet(payload)
-
+        payload = {
+            "action": "update_stock",
+            "date": txn_date.strftime("%d/%m/%Y"),
+            "type": "Purchased" if action_type == "Purchased (+)" else "Used",
+            "size": final_size.strip(),
+            "gsm": final_gsm.strip(),
+            "bf": final_bf.strip(),
+            "qty_change": int(qty_change),
+            "weight_change": float(weight_change),
+            "new_qty": int(final_qty),
+            "new_weight": float(final_weight),
+            "breakup_weight": clean_breakup_str,
+            "new_breakup_weight": new_master_breakup,
+            "remark": new_remark.strip(),
+        }
+        with st.spinner("Updating stock entry... Please wait."):
+            send_update_to_sheet(payload)
+            
     # ==========================================
     # MODE B: ADD NEW ITEM
     # ==========================================
@@ -1718,36 +1710,35 @@ with tab_entry:
             "Remark", key=f"r_new_{key_suffix_rill}"
         )
 
-      if st.button(
-          "Save New Stock Item", type="primary", key="btn_add_new_rill"
-      ):
-        clean_size, clean_gsm, clean_bf = (
-            final_size.strip(),
-            final_gsm.strip(),
-            final_bf.strip(),
-        )
+if st.button("Save New Stock Item", type="primary", key="btn_add_new_rill"):
+    clean_size = final_size.strip()
+    clean_gsm = final_gsm.strip()
+    clean_bf = final_bf.strip()
 
-        if not clean_size or not clean_gsm or not clean_bf:
-          st.warning("Please fill in Size, GSM, and BF.")
-        else:
-          payload = {
-              "action": "add_new",
-              "date": txn_date.strftime("%d/%m/%Y"),
-              "type": "Purchased",
-              "size": clean_size,
-              "gsm": clean_gsm,
-              "bf": clean_bf,
-              "qty": int(new_initial_qty),
-              "weight": float(new_weight),
-              "qty_change": int(new_initial_qty),
-              "weight_change": float(new_weight),
-              "new_qty": int(new_initial_qty),
-              "new_weight": float(new_weight),
-              "breakup_weight": clean_breakup_new,
-              "new_breakup_weight": clean_breakup_new,
-              "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -"),
-          }
-          send_update_to_sheet(payload)
+    if not clean_size or not clean_gsm or not clean_bf:
+        st.warning("Please fill in Size, GSM, and BF.")
+    elif new_initial_qty <= 0 and new_weight <= 0:
+        st.warning("Please enter an initial Quantity or Weight greater than 0.")
+    else:
+        payload = {
+            "action": "add_new",
+            "date": txn_date.strftime("%d/%m/%Y"),
+            "type": "Purchased",
+            "size": clean_size,
+            "gsm": clean_gsm,
+            "bf": clean_bf,
+            "qty": int(new_initial_qty),
+            "weight": float(new_weight),
+            "qty_change": int(new_initial_qty),
+            "weight_change": float(new_weight),
+            "new_qty": int(new_initial_qty),
+            "new_weight": float(new_weight),
+            "breakup_weight": clean_breakup_new,
+            "new_breakup_weight": clean_breakup_new,
+            "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -"),
+        }
+        with st.spinner("Saving new stock item... Please wait."):
+            send_update_to_sheet(payload)
 
   st.markdown("### 📋 Current Stock Summary")
   st.dataframe(rill_df, use_container_width=True, hide_index=True)
