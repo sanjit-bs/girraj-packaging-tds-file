@@ -1566,7 +1566,7 @@ with tab_entry:
       )
 
       action_type = st.radio(
-          "Transaction Type", ["Purchased (+)", "Used (-)"], horizontal=True
+          "Transaction Type", ["Purchased (+)", "Used (-)"], index=1, horizontal=True, key=f"type_{key_suffix}"
       )
 
       col_m1, col_m2 = st.columns([1.5, 4.5])
