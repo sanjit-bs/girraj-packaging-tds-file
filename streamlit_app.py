@@ -1626,6 +1626,9 @@ with tab_entry:
           else curr_weight - weight_change
       )
 
+# ==========================================
+# MODE A: EXISTING ITEM MATCHED (Submit Button)
+# ==========================================
 if st.button("Submit Record", type="primary", key="btn_update_rill"):
     if action_type is None:
         st.warning("Please select a Transaction Type (Purchased or Used) before submitting.")
@@ -1657,22 +1660,20 @@ if st.button("Submit Record", type="primary", key="btn_update_rill"):
         }
         with st.spinner("Updating stock entry... Please wait."):
             send_update_to_sheet(payload)
-            
-    # ==========================================
-    # MODE B: ADD NEW ITEM
-    # ==========================================
- else:
-    st.warning(
-          "💡 **New Combination Detected:** Create this new specification below."
-      )
+
+# ==========================================
+# MODE B: ADD NEW ITEM
+# ==========================================
+else:
+    st.warning("💡 **New Combination Detected:** Create this new specification below.")
     st.markdown("##### 📝 Initial Stock Entry for New Specification")
 
-      col_n1, col_n2 = st.columns([1.5, 4.5])
-      with col_n1:
+    col_n1, col_n2 = st.columns([1.5, 4.5])
+    with col_n1:
         txn_date = st.date_input(
             "Date", value=date.today(), key=f"dt_new_{key_suffix_rill}"
         )
-      with col_n2:
+    with col_n2:
         raw_breakup_new = st.text_input(
             "Breakup Weight Entry (kg)",
             placeholder="e.g. 25.5, 30.0, 28.2",
@@ -1681,23 +1682,23 @@ if st.button("Submit Record", type="primary", key="btn_update_rill"):
             on_change=sync_new_breakup,
         )
 
-      _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
+    _, _, clean_breakup_new = parse_breakup_weights(raw_breakup_new)
 
-      # Initialize states so the callbacks can safely overwrite them
-      if f"q_new_{key_suffix_rill}" not in st.session_state:
+    # Initialize states so the callbacks can safely overwrite them
+    if f"q_new_{key_suffix_rill}" not in st.session_state:
         st.session_state[f"q_new_{key_suffix_rill}"] = 0
-      if f"w_new_{key_suffix_rill}" not in st.session_state:
+    if f"w_new_{key_suffix_rill}" not in st.session_state:
         st.session_state[f"w_new_{key_suffix_rill}"] = 0.0
 
-      col_n3, col_n4, col_n5 = st.columns([1.5, 1.5, 3])
-      with col_n3:
+    col_n3, col_n4, col_n5 = st.columns([1.5, 1.5, 3])
+    with col_n3:
         new_initial_qty = st.number_input(
             "Initial Quantity *",
             min_value=0,
             step=1,
             key=f"q_new_{key_suffix_rill}",
         )
-      with col_n4:
+    with col_n4:
         new_weight = st.number_input(
             "Initial Weight (kg) *",
             min_value=0.0,
@@ -1705,43 +1706,44 @@ if st.button("Submit Record", type="primary", key="btn_update_rill"):
             format="%.2f",
             key=f"w_new_{key_suffix_rill}",
         )
-      with col_n5:
+    with col_n5:
         new_remark_text = st.text_input(
             "Remark", key=f"r_new_{key_suffix_rill}"
         )
 
-if st.button("Save New Stock Item", type="primary", key="btn_add_new_rill"):
-    clean_size = final_size.strip()
-    clean_gsm = final_gsm.strip()
-    clean_bf = final_bf.strip()
+    if st.button("Save New Stock Item", type="primary", key="btn_add_new_rill"):
+        clean_size = final_size.strip()
+        clean_gsm = final_gsm.strip()
+        clean_bf = final_bf.strip()
 
-    if not clean_size or not clean_gsm or not clean_bf:
-        st.warning("Please fill in Size, GSM, and BF.")
-    elif new_initial_qty <= 0 and new_weight <= 0:
-        st.warning("Please enter an initial Quantity or Weight greater than 0.")
-    else:
-        payload = {
-            "action": "add_new",
-            "date": txn_date.strftime("%d/%m/%Y"),
-            "type": "Purchased",
-            "size": clean_size,
-            "gsm": clean_gsm,
-            "bf": clean_bf,
-            "qty": int(new_initial_qty),
-            "weight": float(new_weight),
-            "qty_change": int(new_initial_qty),
-            "weight_change": float(new_weight),
-            "new_qty": int(new_initial_qty),
-            "new_weight": float(new_weight),
-            "breakup_weight": clean_breakup_new,
-            "new_breakup_weight": clean_breakup_new,
-            "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -"),
-        }
-        with st.spinner("Saving new stock item... Please wait."):
-            send_update_to_sheet(payload)
+        if not clean_size or not clean_gsm or not clean_bf:
+            st.warning("Please fill in Size, GSM, and BF.")
+        elif new_initial_qty <= 0 and new_weight <= 0:
+            st.warning("Please enter an initial Quantity or Weight greater than 0.")
+        else:
+            payload = {
+                "action": "add_new",
+                "date": txn_date.strftime("%d/%m/%Y"),
+                "type": "Purchased",
+                "size": clean_size,
+                "gsm": clean_gsm,
+                "bf": clean_bf,
+                "qty": int(new_initial_qty),
+                "weight": float(new_weight),
+                "qty_change": int(new_initial_qty),
+                "weight_change": float(new_weight),
+                "new_qty": int(new_initial_qty),
+                "new_weight": float(new_weight),
+                "breakup_weight": clean_breakup_new,
+                "new_breakup_weight": clean_breakup_new,
+                "remark": f"Initial Stock - {new_remark_text.strip()}".strip(" -"),
+            }
+            with st.spinner("Saving new stock item... Please wait."):
+                send_update_to_sheet(payload)
 
-  st.markdown("### 📋 Current Stock Summary")
-  st.dataframe(rill_df, use_container_width=True, hide_index=True)
+# Display Stock Summary (Out of if/else block)
+st.markdown("### 📋 Current Stock Summary")
+st.dataframe(rill_df, use_container_width=True, hide_index=True)
 
 
 # ------------------------------------------------------
