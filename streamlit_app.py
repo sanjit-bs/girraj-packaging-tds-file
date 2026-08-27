@@ -2005,7 +2005,7 @@ with tab_entry:
 
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            action_type = st.radio("Transaction Type", ["Purchased", "Used"], index=1, horizontal=True, key=f"type_{key_suffix}")
+            action_type = st.radio("Transaction Type", ["Purchased", "Used"], horizontal=True, key=f"type_{key_suffix}")
         with col_t2:
             txn_date = st.date_input("Date", value=date.today(), key=f"dt_{key_suffix}")
 
