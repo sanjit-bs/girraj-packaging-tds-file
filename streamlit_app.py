@@ -2027,35 +2027,39 @@ with tab_entry:
         with col_e4:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
-        if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
-            if grus_val == 0 and pcs_val == 0 and weight_val == 0:
-                st.warning("Please specify a quantity (Grus, Pcs, or Weight) higher than 0.")
-            elif action_type == "Used" and pcs_val > curr_pcs:
-                st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
-            elif action_type == "Used" and weight_val > curr_weight:
-                st.error(f"Cannot subtract {weight_val:.3f} Kg. Available stock is only {curr_weight:.3f} Kg.")
-            else:
-                new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
-                new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
-                new_weight = curr_weight + weight_val if action_type == "Purchased" else curr_weight - weight_val
+# 2. Submit Button Validation
+if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
+    if action_type is None:
+        st.warning("Please select a Transaction Type (Purchased or Used) before submitting.")
+    elif grus_val == 0 and pcs_val == 0 and weight_val == 0:
+        st.warning("Please specify a quantity (Grus, Pcs, or Weight) higher than 0.")
+    elif action_type == "Used" and pcs_val > curr_pcs:
+        st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
+    elif action_type == "Used" and weight_val > curr_weight:
+        st.error(f"Cannot subtract {weight_val:.3f} Kg. Available stock is only {curr_weight:.3f} Kg.")
+    else:
+        with st.spinner("Updating Google Sheet stock... Please wait."):
+            new_grus = curr_grus + grus_val if action_type == "Purchased" else curr_grus - grus_val
+            new_pcs = curr_pcs + pcs_val if action_type == "Purchased" else curr_pcs - pcs_val
+            new_weight = curr_weight + weight_val if action_type == "Purchased" else curr_weight - weight_val
 
-                params = {
-                    "action": "update_stock",
-                    "date": txn_date.strftime("%d/%m/%Y"),
-                    "type": action_type,
-                    "product": final_p.strip(),
-                    "width": final_w.strip(),
-                    "length": final_l.strip(),
-                    "gsm": final_g.strip(),
-                    "grus_change": float(grus_val),
-                    "pcs_change": int(pcs_val),
-                    "weight_change": float(weight_val),
-                    "new_grus": float(new_grus),
-                    "new_pcs": int(new_pcs),
-                    "new_weight": float(round(new_weight, 3)),
-                    "remark": remark.strip()
-                }
-                send_update_to_sheet(params)
+            params = {
+                "action": "update_stock",
+                "date": txn_date.strftime("%d/%m/%Y"),
+                "type": action_type,
+                "product": final_p.strip(),
+                "width": final_w.strip(),
+                "length": final_l.strip(),
+                "gsm": final_g.strip(),
+                "grus_change": float(grus_val),
+                "pcs_change": int(pcs_val),
+                "weight_change": float(weight_val),
+                "new_grus": float(new_grus),
+                "new_pcs": int(new_pcs),
+                "new_weight": float(round(new_weight, 3)),
+                "remark": remark.strip()
+            }
+            send_update_to_sheet(params)
 
 with tab_history:
     st.markdown("### 📋 Current Master Stock (`sheet_stock`)")
