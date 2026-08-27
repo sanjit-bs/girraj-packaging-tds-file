@@ -1566,7 +1566,7 @@ with tab_entry:
       )
 
       action_type = st.radio(
-          "Transaction Type", ["Purchased (+)", "Used (-)"], index=1, horizontal=True, key=f"type_{key_suffix}"
+          "Transaction Type", ["Purchased (+)", "Used (-)"], index=1, horizontal=None, key=f"type_{key_suffix}"
       )
 
       col_m1, col_m2 = st.columns([1.5, 4.5])
@@ -2005,9 +2005,9 @@ with tab_entry:
 
         col_t1, col_t2 = st.columns(2)
         with col_t1:
-            action_type = st.radio("Transaction Type", ["Purchased", "Used"], horizontal=True, key=f"type_{key_suffix}")
+            action_type = st.radio("Transaction Type", ["Purchased", "Used"], index=1, horizontal=True, key=f"type_{key_suffix}_{idx}")
         with col_t2:
-            txn_date = st.date_input("Date", value=date.today(), key=f"dt_{key_suffix}")
+            txn_date = st.date_input("Date", value=date.today(), key=f"dt_{key_suffix}_{idx}")
 
         if f"g_in_{key_suffix}" not in st.session_state:
             st.session_state[f"g_in_{key_suffix}"] = 0.0
