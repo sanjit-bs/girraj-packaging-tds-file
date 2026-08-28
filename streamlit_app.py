@@ -2324,5 +2324,5 @@ st.markdown("[Quality Test Report Generator App](https://idyllic-unicorn-9a9402.
 
 #################### ---------------- Tax Invoice Generator (Tally Layout) ------------------------ #########################
 st.markdown("---")
-st.markdown("Tax Invoice Generator")
+st.subheader("Tax Invoice Generator")
 st.markdown("[Tax Invoice Generator App](https://lively-parfait-437225.netlify.app)")
