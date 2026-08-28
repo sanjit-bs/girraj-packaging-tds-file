@@ -2317,7 +2317,12 @@ with tab2:
                                 except Exception as e:
                                     st.error(f"Error updating record: {e}")
 
-# Added requested sub-heading and link
+#################### ---------------- Quality Test Report Generator ------------------------ #########################
 st.markdown("---")
 st.subheader("Quality Test Report Generator")
 st.markdown("[Quality Test Report Generator App](https://idyllic-unicorn-9a9402.netlify.app)")
+
+#################### ---------------- Tax Invoice Generator (Tally Layout) ------------------------ #########################
+st.markdown("---")
+st.markdown("Tax Invoice Generator")
+st.markdown("[Tax Invoice Generator App](https://lively-parfait-437225.netlify.app)")
