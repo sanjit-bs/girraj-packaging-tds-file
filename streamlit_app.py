@@ -1155,6 +1155,96 @@ def connect_unloading_sheet():
     client = gspread.authorize(creds)
     return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME5)
 
+
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------#
+#############################-------------------------- Production Stock Configuration--------------------------------##############################################
+# -----------------------------------------------------------------------------------------------------------------------------------------------------------------#
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxDEYO6Q6NaLyMv9TccVNHcM4jYCpFv9Mi95EaBAw6RYUcTz7JMzn3jjoNT1Jn43zth/exec"
+
+st.set_page_config(page_title="Production Stock Ledger", layout="wide")
+
+@st.cache_data(ttl=5)
+def fetch_data():
+    try:
+        response = requests.get(WEB_APP_URL, timeout=30).json()
+        if response.get("status") == "success":
+            return pd.DataFrame(response.get("master", [])), pd.DataFrame(response.get("history", []))
+    except Exception as e:
+        st.error(f"Failed to fetch data: {e}")
+    return pd.DataFrame(), pd.DataFrame()
+
+master_df, history_df = fetch_data()
+
+st.title("📦 Production Stock Tracker")
+
+tab1, tab2, tab3 = st.tabs(["⚡ Record Entry", "📋 Master Stock", "📜 History Log"])
+
+# ------------------------------------------------------
+# Tab 1: Record Entry
+# ------------------------------------------------------
+with tab1:
+    st.subheader("Add New Production Entry")
+    
+    with st.form("entry_form"):
+        col1, col2 = st.columns(2)
+        with col1:
+            company = st.text_input("Company *")
+            product = st.text_input("Product Name *")
+            pcs = st.number_input("Number of sheet (PCS) *", min_value=1, step=1)
+            category = st.selectbox("Category", ["Mini", "Inner", "NF", "Label"])
+        
+        with col2:
+            sheet_to_box = st.text_input("Sheet to Box or Inner (e.g., sheet * 2 = box)")
+            total_box = st.number_input("Total Box", min_value=0.0, step=0.1)
+            rate = st.number_input("Rate (Rs)", min_value=0.0, step=0.01)
+            total_charge = st.number_input("Total Processing Charge", min_value=0.0, step=0.1)
+
+        submitted = st.form_submit_button("Submit Record")
+        
+        if submitted:
+            if not company or not product:
+                st.warning("Company and Product are required.")
+            else:
+                payload = {
+                    "Company": company.strip(),
+                    "Product": product.strip(),
+                    "PCS": pcs,
+                    "Category": category,
+                    "SheetToBox": sheet_to_box.strip(),
+                    "TotalBox/Inner/Sheet": total_box_inner_sheet,
+                    "Rate": rate,
+                    "TotalCharge": total_charge
+                }
+                
+                with st.spinner("Syncing to Google Sheets..."):
+                    res = requests.post(WEB_APP_URL, json=payload, allow_redirects=True)
+                    if res.status_code == 200 and res.json().get("status") == "success":
+                        st.success("✅ Entry recorded successfully!")
+                        st.cache_data.clear()
+                    else:
+                        st.error("❌ Failed to update backend.")
+
+# ------------------------------------------------------
+# Tab 2: Master Stock
+# ------------------------------------------------------
+with tab2:
+    st.subheader("Current Master Stock")
+    if not master_df.empty:
+        st.dataframe(master_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No master records found.")
+
+# ------------------------------------------------------
+# Tab 3: History Log
+# ------------------------------------------------------
+with tab3:
+    st.subheader("Chronological History")
+    if not history_df.empty:
+        st.dataframe(history_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No history records found.")
+
+
 ################------------Unloading--------------#####################
 
 unloading_sheet = connect_unloading_sheet()
