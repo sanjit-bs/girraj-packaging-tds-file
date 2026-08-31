@@ -1181,7 +1181,7 @@ def calculate_totals(pcs, category, conversion_rule, rate_val):
     if pcs is None or rate_val is None or not conversion_rule:
         return None, None
 
-    rule = str(conversion_rule).lower()
+    rule = str(conversion_rule).lower().strip()
     total_box = 0.0
 
     if "sheet * 2" in rule:
@@ -1201,6 +1201,7 @@ def calculate_totals(pcs, category, conversion_rule, rate_val):
     else:
         total_box = float(pcs)
 
+    # Inner and Label categories charge per sheet; Mini and NF charge per box
     if str(category).strip().lower() in ["inner", "label"]:
         total_charge = pcs * rate_val
     else:
@@ -1211,13 +1212,12 @@ def calculate_totals(pcs, category, conversion_rule, rate_val):
 
 master_df, history_df = fetch_data()
 
-st.markdown("---")
-st.subheader("📦 Production Stock Tracker")
+st.title("📦 Production Stock Tracker")
 
 tab1, tab2, tab3 = st.tabs(["⚡ Record Entry", "📋 Master Stock", "📜 History Log"])
 
 # ------------------------------------------------------
-# Tab 1: Dynamic Record Entry (Vacant Inputs)
+# Tab 1: Live Interactive Record Entry (No st.form)
 # ------------------------------------------------------
 with tab1:
     st.subheader("Add Production Record")
@@ -1272,12 +1272,11 @@ with tab1:
     else:
         final_product = ""
 
-    # Default vacant state
+    # Auto-fill preset values when selecting an existing product
     default_cat = None
     default_rule = ""
     default_rate = None
 
-    # Fill defaults only if an existing product is selected
     if (
         final_company
         and final_product
@@ -1301,110 +1300,107 @@ with tab1:
 
     st.markdown("---")
 
-    with st.form("entry_form"):
-        col_f1, col_f2 = st.columns(2)
+    col_f1, col_f2 = st.columns(2)
 
-        categories = ["Select Category...", "Mini", "Inner", "NF", "Label"]
-        cat_index = (
-            categories.index(default_cat) if default_cat in categories else 0
+    categories = ["Select Category...", "Mini", "Inner", "NF", "Label"]
+    cat_index = (
+        categories.index(default_cat) if default_cat in categories else 0
+    )
+
+    with col_f1:
+        category_val = st.selectbox("Category *", categories, index=cat_index)
+        sheet_to_box_val = st.text_input(
+            "Sheet to Box or Inner *",
+            value=default_rule,
+            placeholder="e.g. sheet * 2 = box",
+        )
+        pcs_val = st.number_input(
+            "Number of sheet (PCS) *",
+            min_value=1,
+            step=1,
+            value=None,
+            placeholder="Enter sheet quantity",
         )
 
-        with col_f1:
-            category_val = st.selectbox(
-                "Category *", categories, index=cat_index
-            )
-            sheet_to_box_val = st.text_input(
-                "Sheet to Box or Inner *",
-                value=default_rule,
-                placeholder="e.g. sheet * 2 = box",
-            )
-            pcs_val = st.number_input(
-                "Number of sheet (PCS) *",
-                min_value=1,
-                step=1,
-                value=None,
-                placeholder="Enter sheet quantity",
-            )
+    with col_f2:
+        rate_val = st.number_input(
+            "Rate (Rs) *",
+            min_value=0.0,
+            step=0.01,
+            value=default_rate,
+            placeholder="Enter rate",
+        )
 
-        with col_f2:
-            rate_val = st.number_input(
-                "Rate (Rs) *",
-                min_value=0.0,
-                step=0.01,
-                value=default_rate,
-                placeholder="Enter rate",
-            )
+        # Calculate live outputs immediately on widget value changes
+        calc_box, calc_charge = calculate_totals(
+            pcs_val,
+            category_val if category_val != "Select Category..." else "",
+            sheet_to_box_val,
+            rate_val,
+        )
 
-            calc_box, calc_charge = calculate_totals(
-                pcs_val,
-                category_val if category_val != "Select Category..." else "",
-                sheet_to_box_val,
-                rate_val,
-            )
+        total_box_val = st.number_input(
+            "TotalBox/Inner/Sheet *",
+            min_value=0.0,
+            step=0.1,
+            value=calc_box,
+            placeholder="Auto-calculated or enter value",
+        )
+        total_charge_val = st.number_input(
+            "Total Processing Charge (Rs) *",
+            min_value=0.0,
+            step=0.1,
+            value=calc_charge,
+            placeholder="Auto-calculated or enter value",
+        )
 
-            total_box_val = st.number_input(
-                "TotalBox/Inner/Sheet *",
-                min_value=0.0,
-                step=0.1,
-                value=calc_box,
-                placeholder="Auto-calculated or enter value",
-            )
-            total_charge_val = st.number_input(
-                "Total Processing Charge (Rs) *",
-                min_value=0.0,
-                step=0.1,
-                value=calc_charge,
-                placeholder="Auto-calculated or enter value",
-            )
+    st.write("")
+    submitted = st.button("Submit Production Entry", type="primary")
 
-        submitted = st.form_submit_button("Submit Production Entry")
+    if submitted:
+        if not final_company or not final_product:
+            st.warning("⚠️ Please select or specify Company and Product.")
+        elif category_val == "Select Category...":
+            st.warning("⚠️ Please select a Category.")
+        elif pcs_val is None:
+            st.warning("⚠️ Please enter Number of sheet (PCS).")
+        elif rate_val is None:
+            st.warning("⚠️ Please enter Rate (Rs).")
+        else:
+            payload = {
+                "Date": entry_date.strftime("%d/%m/%Y"),
+                "Company": final_company.strip(),
+                "Product": final_product.strip(),
+                "PCS": int(pcs_val),
+                "Category": category_val,
+                "SheetToBox": sheet_to_box_val.strip(),
+                "TotalBox/Inner/Sheet": float(
+                    total_box_val if total_box_val is not None else 0.0
+                ),
+                "Rate": float(rate_val),
+                "TotalCharge": float(
+                    total_charge_val if total_charge_val is not None else 0.0
+                ),
+            }
 
-        if submitted:
-            if not final_company or not final_product:
-                st.warning("⚠️ Please select or specify Company and Product.")
-            elif category_val == "Select Category...":
-                st.warning("⚠️ Please select a Category.")
-            elif pcs_val is None:
-                st.warning("⚠️ Please enter Number of sheet (PCS).")
-            elif rate_val is None:
-                st.warning("⚠️ Please enter Rate (Rs).")
-            else:
-                payload = {
-                    "Date": entry_date.strftime("%d/%m/%Y"),
-                    "Company": final_company.strip(),
-                    "Product": final_product.strip(),
-                    "PCS": int(pcs_val),
-                    "Category": category_val,
-                    "SheetToBox": sheet_to_box_val.strip(),
-                    "TotalBox/Inner/Sheet": float(
-                        total_box_val if total_box_val is not None else 0.0
-                    ),
-                    "Rate": float(rate_val),
-                    "TotalCharge": float(
-                        total_charge_val
-                        if total_charge_val is not None
-                        else 0.0
-                    ),
-                }
-
-                with st.spinner("Writing to Google Sheets..."):
-                    try:
-                        res = requests.post(
-                            WEB_APP_URL, json=payload, allow_redirects=True, timeout=30
+            with st.spinner("Writing to Google Sheets..."):
+                try:
+                    res = requests.post(
+                        WEB_APP_URL, json=payload, allow_redirects=True, timeout=30
+                    )
+                    if (
+                        res.status_code == 200
+                        and res.json().get("status") == "success"
+                    ):
+                        st.success("✅ Entry added successfully!")
+                        st.cache_data.clear()
+                        st.rerun()
+                    else:
+                        st.error(
+                            f"❌ Script error: {res.json().get('message', 'Unknown error')}"
                         )
-                        if (
-                            res.status_code == 200
-                            and res.json().get("status") == "success"
-                        ):
-                            st.success("✅ Entry added successfully!")
-                            st.cache_data.clear()
-                            st.rerun()
-                        else:
-                            st.error(
-                                f"❌ Script error: {res.json().get('message', 'Unknown error')}"
-                            )
-                    except Exception as err:
-                        st.error(f"❌ Network error: {err}")
+                except Exception as err:
+                    st.error(f"❌ Network error: {err}")
 
 # ------------------------------------------------------
 # Tab 2: Master Stock Summary
