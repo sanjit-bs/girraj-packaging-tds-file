@@ -526,23 +526,48 @@ inv_value_df = load_invoice_value_data()
 
 
 # ======================================================
-# Auto-Increment Sequence Logic
+# Auto-Increment Sequence Logic (Structured: GP/inv. no./FY)
 # ======================================================
-def get_next_invoice_number(df):
+def get_financial_year(target_date=None):
+    if target_date is None:
+        target_date = date.today()
+    year = target_date.year
+    if target_date.month >= 4:
+        start_yr = year % 100
+        end_yr = (year + 1) % 100
+    else:
+        start_yr = (year - 1) % 100
+        end_yr = year % 100
+    return f"{start_yr:02d}-{end_yr:02d}"
+
+
+def get_next_invoice_number(df, target_date=None):
+    fy = get_financial_year(target_date)
     if df.empty or "Invoice No." not in df.columns:
-        return "1"
+        return f"GP/1/{fy}"
+
     valid_invoices = df["Invoice No."].dropna().astype(str).str.strip()
     valid_invoices = [v for v in valid_invoices if v != ""]
     if not valid_invoices:
-        return "1"
+        return f"GP/1/{fy}"
+
     last_invoice = valid_invoices[-1]
-    match = re.search(r"(\d+)$", last_invoice)
+
+    match = re.search(r"GP/(\d+)/", last_invoice, re.IGNORECASE)
     if match:
         num_part = match.group(1)
         next_num = int(num_part) + 1
         next_num_str = str(next_num).zfill(len(num_part))
-        return last_invoice[: match.start()] + next_num_str
-    return "1"
+        return f"GP/{next_num_str}/{fy}"
+
+    match_any = re.search(r"(\d+)", last_invoice)
+    if match_any:
+        num_part = match_any.group(1)
+        next_num = int(num_part) + 1
+        next_num_str = str(next_num).zfill(len(num_part))
+        return f"GP/{next_num_str}/{fy}"
+
+    return f"GP/1/{fy}"
 
 
 suggested_next_invoice = get_next_invoice_number(delivery_df)
@@ -660,7 +685,7 @@ with tab1:
             st.session_state.current_driver = ""
             st.session_state.current_owner = ""
             st.session_state.current_invoice = get_next_invoice_number(
-                fresh_df
+                fresh_df, delivery_date
             )
             st.session_state.submit_success = True
             st.session_state.form_key += 1
@@ -749,7 +774,7 @@ with tab2:
             st.cache_data.clear()
             fresh_df = load_delivery_data()
             st.session_state.current_invoice = get_next_invoice_number(
-                fresh_df
+                fresh_df, fin_date
             )
             st.session_state.submit_success = True
             st.session_state.form_key += 1
@@ -988,6 +1013,7 @@ else:
             mime="text/csv",
             type="secondary",
         )
+        
 ############################--------------------------------------------------Stock Record----------------------------------###################################
 WORKSHEET_NAME4 = "Stock_Record"
 
