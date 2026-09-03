@@ -1278,7 +1278,7 @@ with tab1:
     else:
         final_company = ""
         avail_products = []
-Production Stock Tracker
+# Production Stock Tracker
     with col_sel2:
         if sel_company not in ["Select Company...", "➕ Add New Company"]:
             sel_product = st.selectbox(
