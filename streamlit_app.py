@@ -1238,7 +1238,7 @@ def calculate_totals(pcs, category, conversion_rule, rate_val):
 
 master_df, history_df = fetch_data()
 
-st.st.markdown("---")
+st.markdown("---")
 st.subheader("📦 Production Stock Tracker")
 
 tab1, tab2, tab3 = st.tabs(["⚡ Record Entry", "📋 Master Stock", "📜 History Log"])
