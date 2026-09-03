@@ -1238,7 +1238,8 @@ def calculate_totals(pcs, category, conversion_rule, rate_val):
 
 master_df, history_df = fetch_data()
 
-st.title("📦 Production Stock Tracker")
+st.st.markdown("---")
+st.subheader("📦 Production Stock Tracker")
 
 tab1, tab2, tab3 = st.tabs(["⚡ Record Entry", "📋 Master Stock", "📜 History Log"])
 
@@ -1277,7 +1278,7 @@ with tab1:
     else:
         final_company = ""
         avail_products = []
-
+Production Stock Tracker
     with col_sel2:
         if sel_company not in ["Select Company...", "➕ Add New Company"]:
             sel_product = st.selectbox(
