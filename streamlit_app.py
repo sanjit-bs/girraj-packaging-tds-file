@@ -2716,7 +2716,7 @@ with tab_history:
 # ==========================================
 ################################## Purchase Order & Verification System #########################################
 # ==========================================
-PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyjlawSLUajBvH6CgN4wdMU3Foo5O8daYD1LNdR-Wrc4zEYpxdSHgZDoTi96k4iP7TU/exec"
+PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjGmi-PjHT0P8hFmffHhuNdjI_LVInLWp4aZko7lYG6VFG44_gezAZTKpAc7TJntPv/exec"
 
 CREDITORS_LIST = [
     "Select Creditor...", "BALAJI ENTERPRISE", "DHANUKA UDYOG PRIVATE LIMITED", 
