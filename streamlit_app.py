@@ -2145,7 +2145,7 @@ with tab_history:
 # ======================================================
 # Paper Sheet Stock Configuration & Setup
 # ======================================================
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjGmi-PjHT0P8hFmffHhuNdjI_LVInLWp4aZko7lYG6VFG44_gezAZTKpAc7TJntPv/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxEfGu3JnZSaH0nbVV3GG4qHsemdhGolAR92CTk8dAf1Y7CZ4eL-vE--MLSl7_XPlLg/exec"
 
 COLUMNS_MASTER = [
     "Product",
