@@ -2321,7 +2321,7 @@ def fetch_all_data():
 
 def send_update_to_sheet(params):
     try:
-        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=20)
+        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=45)
         res_data = res.json()
         if res_data.get("status") == "success":
             st.toast("✅ Stock updated successfully!")
