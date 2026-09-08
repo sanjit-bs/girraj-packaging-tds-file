@@ -2288,7 +2288,7 @@ def sync_pcs(w, l, gsm):
 @st.cache_data(ttl=5)
 def fetch_all_data():
     try:
-        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=20)
+        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=45)
         data = response.json()
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
