@@ -1231,7 +1231,7 @@ def clean_date_column(df, col_name="Date"):
 @st.cache_data(ttl=5)
 def fetch_data():
     try:
-        response = requests.get(WEB_APP_URL, timeout=30).json()
+        response = requests.get(WEB_APP_URL, timeout=20).json()
         if response.get("status") == "success":
             master_df = pd.DataFrame(response.get("master", []))
             history_df = pd.DataFrame(response.get("history", []))
@@ -1456,7 +1456,7 @@ with tab1:
             with st.spinner("Writing to Google Sheets..."):
                 try:
                     res = requests.post(
-                        WEB_APP_URL, json=payload, allow_redirects=True, timeout=45
+                        WEB_APP_URL, json=payload, allow_redirects=True, timeout=30
                     )
                     if (
                         res.status_code == 200
