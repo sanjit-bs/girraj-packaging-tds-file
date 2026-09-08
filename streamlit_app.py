@@ -1456,7 +1456,7 @@ with tab1:
             with st.spinner("Writing to Google Sheets..."):
                 try:
                     res = requests.post(
-                        WEB_APP_URL, json=payload, allow_redirects=True, timeout=30
+                        WEB_APP_URL, json=payload, allow_redirects=True, timeout=45
                     )
                     if (
                         res.status_code == 200
