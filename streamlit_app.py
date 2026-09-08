@@ -1190,14 +1190,57 @@ WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxDEYO6Q6NaLyMv9TccVNHcM4
 st.set_page_config(page_title="Production Stock Ledger", layout="wide")
 
 
+def clean_date_column(df, col_name="Date"):
+    """
+    Converts Apps Script ISO UTC timestamps (e.g. '2026-08-31T18:30:00.000Z') 
+    back to Asia/Kolkata (IST) DD/MM/YYYY format.
+    """
+    if df.empty or col_name not in df.columns:
+        return df
+
+    def convert_val(val):
+        if pd.isna(val) or str(val).strip() == "":
+            return ""
+        val_str = str(val).strip()
+
+        # Handle ISO strings from Google Apps Script (e.g., 2026-08-31T18:30:00.000Z)
+        if "T" in val_str or "Z" in val_str:
+            dt = pd.to_datetime(val_str, errors="coerce", utc=True)
+            if pd.notna(dt):
+                return dt.tz_convert("Asia/Kolkata").strftime("%d/%m/%Y")
+
+        # Handle DD/MM/YYYY string formats
+        try:
+            dt = pd.to_datetime(val_str, format="%d/%m/%Y", errors="coerce")
+            if pd.notna(dt):
+                return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+        # Handle YYYY-MM-DD or other standard string formats
+        dt = pd.to_datetime(val_str, errors="coerce")
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+
+        return val_str
+
+    df[col_name] = df[col_name].apply(convert_val)
+    return df
+
+
 @st.cache_data(ttl=5)
 def fetch_data():
     try:
         response = requests.get(WEB_APP_URL, timeout=30).json()
         if response.get("status") == "success":
-            return pd.DataFrame(response.get("master", [])), pd.DataFrame(
-                response.get("history", [])
-            )
+            master_df = pd.DataFrame(response.get("master", []))
+            history_df = pd.DataFrame(response.get("history", []))
+
+            # Format date columns to match Google Sheet DD/MM/YYYY format
+            master_df = clean_date_column(master_df, "Date")
+            history_df = clean_date_column(history_df, "Date")
+
+            return master_df, history_df
     except Exception as e:
         st.error(f"Failed to fetch data from backend: {e}")
     return pd.DataFrame(), pd.DataFrame()
@@ -1278,6 +1321,7 @@ with tab1:
     else:
         final_company = ""
         avail_products = []
+
     with col_sel2:
         if sel_company not in ["Select Company...", "➕ Add New Company"]:
             sel_product = st.selectbox(
