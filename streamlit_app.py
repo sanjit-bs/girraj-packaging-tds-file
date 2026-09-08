@@ -2219,6 +2219,44 @@ COLUMNS_HISTORY = [
 ]
 
 
+def clean_date_column(df, col_name="Date"):
+    """
+    Converts Apps Script ISO UTC timestamps (e.g. '2026-08-31T18:30:00.000Z') 
+    back to Asia/Kolkata (IST) DD/MM/YYYY format.
+    """
+    if df.empty or col_name not in df.columns:
+        return df
+
+    def convert_val(val):
+        if pd.isna(val) or str(val).strip() == "":
+            return ""
+        val_str = str(val).strip()
+
+        # Handle ISO strings from Google Apps Script (e.g., 2026-08-31T18:30:00.000Z)
+        if "T" in val_str or "Z" in val_str:
+            dt = pd.to_datetime(val_str, errors="coerce", utc=True)
+            if pd.notna(dt):
+                return dt.tz_convert("Asia/Kolkata").strftime("%d/%m/%Y")
+
+        # Handle DD/MM/YYYY string formats
+        try:
+            dt = pd.to_datetime(val_str, format="%d/%m/%Y", errors="coerce")
+            if pd.notna(dt):
+                return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
+        # Handle YYYY-MM-DD or other standard string formats
+        dt = pd.to_datetime(val_str, errors="coerce")
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+
+        return val_str
+
+    df[col_name] = df[col_name].apply(convert_val)
+    return df
+
+
 def calculate_weight(w, l, gsm, pcs):
     try:
         w_float, l_float, gsm_float, pcs_int = (
@@ -2254,6 +2292,9 @@ def fetch_all_data():
         data = response.json()
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
+
+        # Format date column to prevent UTC timezone date shift
+        history_df = clean_date_column(history_df, "Date")
 
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
