@@ -2191,6 +2191,7 @@ with tab_history:
 # ======================================================
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9FA9ITHoiUxnMturLUshvNhx22uIAlCWIzDUQwDCzIRh52OGSUYd0Wsc97Ahj1oPp/exec"
 
+# Master sheet setup (tracks Challan Weight as primary weight stock)
 COLUMNS_MASTER = [
     "Product",
     "Width",
@@ -2198,11 +2199,11 @@ COLUMNS_MASTER = [
     "GSM",
     "Grus",
     "Pcs",
-    "Weight",
     "Challan Weight",
-    "Diff Weight",
     "Remark",
 ]
+
+# History sheet setup (retains full transaction detail including calculated & diff weight)
 COLUMNS_HISTORY = [
     "Date",
     "Type",
@@ -2212,8 +2213,8 @@ COLUMNS_HISTORY = [
     "GSM",
     "Grus",
     "Pcs",
-    "Weight",
     "Challan Weight",
+    "Weight",
     "Diff Weight",
     "Remark",
 ]
@@ -2221,7 +2222,7 @@ COLUMNS_HISTORY = [
 
 def clean_date_column(df, col_name="Date"):
     """
-    Converts Apps Script ISO UTC timestamps (e.g. '2026-08-31T18:30:00.000Z') 
+    Converts Apps Script ISO UTC timestamps (e.g. '2026-08-31T18:30:00.000Z')
     back to Asia/Kolkata (IST) DD/MM/YYYY format.
     """
     if df.empty or col_name not in df.columns:
@@ -2232,13 +2233,11 @@ def clean_date_column(df, col_name="Date"):
             return ""
         val_str = str(val).strip()
 
-        # Handle ISO strings from Google Apps Script (e.g., 2026-08-31T18:30:00.000Z)
         if "T" in val_str or "Z" in val_str:
             dt = pd.to_datetime(val_str, errors="coerce", utc=True)
             if pd.notna(dt):
                 return dt.tz_convert("Asia/Kolkata").strftime("%d/%m/%Y")
 
-        # Handle DD/MM/YYYY string formats
         try:
             dt = pd.to_datetime(val_str, format="%d/%m/%Y", errors="coerce")
             if pd.notna(dt):
@@ -2246,7 +2245,6 @@ def clean_date_column(df, col_name="Date"):
         except Exception:
             pass
 
-        # Handle YYYY-MM-DD or other standard string formats
         dt = pd.to_datetime(val_str, errors="coerce")
         if pd.notna(dt):
             return dt.strftime("%d/%m/%Y")
@@ -2288,20 +2286,17 @@ def sync_pcs(w, l, gsm):
 @st.cache_data(ttl=5)
 def fetch_all_data():
     try:
-        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=45)
+        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=20)
         data = response.json()
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
 
-        # Format date column to prevent UTC timezone date shift
         history_df = clean_date_column(history_df, "Date")
 
         for col in COLUMNS_MASTER:
             if col not in master_df.columns:
                 master_df[col] = (
-                    0.0
-                    if col in ["Grus", "Pcs", "Weight", "Challan Weight", "Diff Weight"]
-                    else ""
+                    0.0 if col in ["Grus", "Pcs", "Challan Weight"] else ""
                 )
         for col in COLUMNS_HISTORY:
             if col not in history_df.columns:
@@ -2321,7 +2316,7 @@ def fetch_all_data():
 
 def send_update_to_sheet(params):
     try:
-        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=45)
+        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=20)
         res_data = res.json()
         if res_data.get("status") == "success":
             st.toast("✅ Stock updated successfully!")
@@ -2489,26 +2484,15 @@ with tab_entry:
         curr_pcs = (
             int(pd.to_numeric(match["Pcs"]).sum()) if not match.empty else 0
         )
-        curr_weight = (
-            float(pd.to_numeric(match["Weight"]).sum())
-            if not match.empty
-            else 0.0
-        )
         curr_challan_weight = (
             float(pd.to_numeric(match["Challan Weight"]).sum())
             if not match.empty and "Challan Weight" in match.columns
             else 0.0
         )
-        curr_diff_weight = (
-            float(pd.to_numeric(match["Diff Weight"]).sum())
-            if not match.empty and "Diff Weight" in match.columns
-            else 0.0
-        )
 
         st.info(
-            f"**Current Existing Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs | "
-            f"Calculated Wt: {curr_weight:.3f} Kg | Challan Wt: {curr_challan_weight:.3f} Kg | "
-            f"Diff Wt: {curr_diff_weight:.3f} Kg"
+            f"**Current Master Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs | "
+            f"Challan Weight: {curr_challan_weight:.3f} Kg"
         )
 
         st.markdown("##### 📝 Entry Details")
@@ -2583,61 +2567,33 @@ with tab_entry:
         with col_e6:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
 
-        # Adjustment Section for "Used" Transaction
-        apply_adjustment = False
-        if action_type == "Used":
-            st.markdown("---")
-            st.markdown("##### ⚖️ Stock Adjustment Section")
-            st.caption(
-                f"Remaining / Excess Weight Difference in Stock: **{curr_diff_weight:.3f} Kg**"
-            )
-            apply_adjustment = st.checkbox(
-                "Adjust / Clear Difference Weight (Check if weight is going excess than entried)",
-                key=f"adj_chk_{key_suffix}",
-            )
-            if apply_adjustment:
-                st.success("✅ The weight difference will be adjusted and reconciled to 0.000 Kg.")
-
-        # Submit Button Validation
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
             if action_type is None:
                 st.warning(
                     "Please select a Transaction Type (Purchased or Used) before submitting."
                 )
-            elif grus_val == 0 and pcs_val == 0 and weight_val == 0:
+            elif grus_val == 0 and pcs_val == 0 and challan_wt_val == 0:
                 st.warning(
-                    "Please specify a quantity (Grus, Pcs, or Weight) higher than 0."
+                    "Please specify a quantity (Grus, Pcs, or Challan Weight) higher than 0."
                 )
             elif action_type == "Used" and pcs_val > curr_pcs:
                 st.error(
                     f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs."
                 )
-            elif action_type == "Used" and weight_val > curr_weight:
-                st.error(
-                    f"Cannot subtract {weight_val:.3f} Kg. Available stock is only {curr_weight:.3f} Kg."
-                )
             elif action_type == "Used" and challan_wt_val > curr_challan_weight:
                 st.error(
-                    f"Cannot subtract {challan_wt_val:.3f} Kg Challan Weight. Available Challan stock is only {curr_challan_weight:.3f} Kg."
+                    f"Cannot subtract {challan_wt_val:.3f} Kg. Available Challan Weight stock is only {curr_challan_weight:.3f} Kg."
                 )
             else:
                 with st.spinner("Updating Google Sheet stock... Please wait."):
                     if action_type == "Purchased":
                         new_grus = curr_grus + grus_val
                         new_pcs = curr_pcs + pcs_val
-                        new_weight = curr_weight + weight_val
                         new_challan_weight = curr_challan_weight + challan_wt_val
-                        new_diff_weight = curr_diff_weight + calculated_diff
-                    else:  # Used
+                    else:  # Used (-) deduction directly from Challan Weight
                         new_grus = curr_grus - grus_val
                         new_pcs = curr_pcs - pcs_val
-                        new_weight = curr_weight - weight_val
                         new_challan_weight = curr_challan_weight - challan_wt_val
-                        new_diff_weight = (
-                            0.0
-                            if apply_adjustment
-                            else (curr_diff_weight - calculated_diff)
-                        )
 
                     params = {
                         "action": "update_stock",
@@ -2652,11 +2608,9 @@ with tab_entry:
                         "weight_change": float(weight_val),
                         "challan_weight_change": float(challan_wt_val),
                         "diff_weight_change": float(calculated_diff),
-                        "new_grus": float(new_grus),
+                        "new_grus": float(round(new_grus, 2)),
                         "new_pcs": int(new_pcs),
-                        "new_weight": float(round(new_weight, 3)),
                         "new_challan_weight": float(round(new_challan_weight, 3)),
-                        "new_diff_weight": float(round(new_diff_weight, 3)),
                         "remark": remark.strip(),
                     }
                     send_update_to_sheet(params)
@@ -2665,25 +2619,19 @@ with tab_history:
     st.markdown("### 📋 Current Master Stock (`sheet_stock`)")
 
     display_master_df = sheet_df.copy()
-    for col in ["Weight", "Challan Weight", "Diff Weight"]:
-        if col in display_master_df.columns:
-            display_master_df[col] = (
-                pd.to_numeric(display_master_df[col], errors="coerce")
-                .fillna(0.0)
-            )
+    if "Challan Weight" in display_master_df.columns:
+        display_master_df["Challan Weight"] = (
+            pd.to_numeric(display_master_df["Challan Weight"], errors="coerce")
+            .fillna(0.0)
+        )
 
     st.dataframe(
         display_master_df,
         column_config={
             "Grus": st.column_config.NumberColumn("Grus", format="%.2f"),
-            "Weight": st.column_config.NumberColumn(
-                "Calculated Weight (Kg)", format="%.3f"
-            ),
+            "Pcs": st.column_config.NumberColumn("Pcs", format="%d"),
             "Challan Weight": st.column_config.NumberColumn(
                 "Challan Weight (Kg)", format="%.3f"
-            ),
-            "Diff Weight": st.column_config.NumberColumn(
-                "Diff Weight (Kg)", format="%.3f"
             ),
         },
         use_container_width=True,
@@ -2798,6 +2746,7 @@ with tab_history:
             use_container_width=True,
             hide_index=True,
         )
+
 # ==========================================
 ################################## Purchase Order & Verification System #########################################
 # ==========================================
