@@ -2359,16 +2359,7 @@ def send_update_to_sheet(params):
             st.error(f"Backend Error: {err_msg}")
     except Exception as e:
         st.error(f"Transaction failed: {e}")
-
-
-# ======================================================
-# Main Application Setup
-# ======================================================
-sheet_df, history_df = fetch_all_data()
-
-st.markdown("---")
-st.subheader("📄 Paper Sheet Stock Manager")
-
+#==============================================================#
 with st.expander("📐 Quick CM to Inches Converter"):
     col_cm1, col_cm2 = st.columns(2)
     with col_cm1:
@@ -2392,6 +2383,13 @@ with st.expander("📐 Quick CM to Inches Converter"):
             f"**Converted Dimensions:** {w_cm / 2.54:.2f}″ (W) × {l_cm / 2.54:.2f}″ (L)\n\n*Original:* {w_cm:.2f} cm × {l_cm:.2f} cm"
         )
 
+# ======================================================
+# Main Application Setup
+# ======================================================
+sheet_df, history_df = fetch_all_data()
+
+st.markdown("---")
+st.subheader("📄 Paper Sheet Stock Manager")
 if "form_key" not in st.session_state:
     st.session_state.form_key = 0
 key_suffix = st.session_state.form_key
