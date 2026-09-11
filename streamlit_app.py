@@ -2191,32 +2191,64 @@ with tab_history:
 # ================================================================================================
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNDd8Zybovl7rso9STNpyqmqxQRUZC80h_qo59UA03iGDYLiWmEJLnGqlG2KFWXPMT/exec"
 
-COLUMNS_MASTER = ["Product", "Width", "Length", "GSM", "Grus", "Pcs", "Challan Weight", "Remark"]
-COLUMNS_HISTORY = ["Date", "Type", "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Challan Weight", "Weight", "Diff Weight", "Remark"]
+COLUMNS_MASTER = [
+    "Product",
+    "Width",
+    "Length",
+    "GSM",
+    "Grus",
+    "Pcs",
+    "Challan Weight",
+    "Remark",
+]
+
+COLUMNS_HISTORY = [
+    "Date",
+    "Type",
+    "Product",
+    "Width",
+    "Length",
+    "GSM",
+    "Grus",
+    "Pcs",
+    "Challan Weight",
+    "Weight",
+    "Diff Weight",
+    "Remark",
+]
 
 def clean_date_column(df, col_name="Date"):
     if df.empty or col_name not in df.columns:
         return df
+
     def convert_val(val):
-        if pd.isna(val) or str(val).strip() == "": return ""
+        if pd.isna(val) or str(val).strip() == "":
+            return ""
         val_str = str(val).strip()
+
         if "T" in val_str or "Z" in val_str:
             dt = pd.to_datetime(val_str, errors="coerce", utc=True)
-            if pd.notna(dt): return dt.tz_convert("Asia/Kolkata").strftime("%d/%m/%Y")
+            if pd.notna(dt):
+                return dt.tz_convert("Asia/Kolkata").strftime("%d/%m/%Y")
         try:
             dt = pd.to_datetime(val_str, format="%d/%m/%Y", errors="coerce")
-            if pd.notna(dt): return dt.strftime("%d/%m/%Y")
-        except Exception: pass
+            if pd.notna(dt):
+                return dt.strftime("%d/%m/%Y")
+        except Exception:
+            pass
+
         dt = pd.to_datetime(val_str, errors="coerce")
-        if pd.notna(dt): return dt.strftime("%d/%m/%Y")
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
         return val_str
+
     df[col_name] = df[col_name].apply(convert_val)
     return df
 
 def calculate_weight(w, l, gsm, pcs):
     try:
-        w_f, l_f, gsm_f, pcs_i = float(w), float(l), float(gsm), int(pcs)
-        return round((((w_f * l_f * gsm_f) / 1550) / 1000) * pcs_i, 3)
+        w_float, l_float, gsm_float, pcs_int = float(w), float(l), float(gsm), int(pcs)
+        return round((((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int, 3)
     except (ValueError, TypeError):
         return 0.000
 
@@ -2229,7 +2261,6 @@ def calculate_pcs_from_weight(w, l, gsm, weight):
         pass
     return 0
 
-# --- Callbacks ---
 def sync_grus(w, l, gsm):
     key_suf = st.session_state.form_key
     g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
@@ -2243,53 +2274,40 @@ def sync_pcs(w, l, gsm):
     st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
     st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
 
-def sync_weight(w, l, gsm):
-    key_suf = st.session_state.form_key
-    action = st.session_state.get(f"tab2_type_{key_suf}")
-    # Reverse calculation works ONLY for "Used"
-    if action == "Used":
-        wt_val = st.session_state.get(f"wt_in_{key_suf}", 0.0)
-        pcs = calculate_pcs_from_weight(w, l, gsm, wt_val)
-        st.session_state[f"pcs_in_{key_suf}"] = pcs
-        st.session_state[f"g_in_{key_suf}"] = round(float(pcs) / 144.0, 2)
-
-def sync_challan_weight(w, l, gsm):
-    key_suf = st.session_state.form_key
-    action = st.session_state.get(f"tab2_type_{key_suf}")
-    # Reverse calculation works ONLY for "Used"
-    if action == "Used":
-        ch_wt_val = st.session_state.get(f"ch_wt_in_{key_suf}", 0.0)
-        pcs = calculate_pcs_from_weight(w, l, gsm, ch_wt_val)
-        st.session_state[f"pcs_in_{key_suf}"] = pcs
-        st.session_state[f"g_in_{key_suf}"] = round(float(pcs) / 144.0, 2)
-        st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs)
-
 @st.cache_data(ttl=5)
 def fetch_all_data():
     try:
         response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=20)
         data = response.json()
-        master_df, history_df = pd.DataFrame(data.get("master", [])), pd.DataFrame(data.get("history", []))
+        master_df = pd.DataFrame(data.get("master", []))
+        history_df = pd.DataFrame(data.get("history", []))
+
         history_df = clean_date_column(history_df, "Date")
 
         for col in COLUMNS_MASTER:
-            if col not in master_df.columns: master_df[col] = 0.0 if col in ["Grus", "Pcs", "Challan Weight"] else ""
+            if col not in master_df.columns:
+                master_df[col] = 0.0 if col in ["Grus", "Pcs", "Challan Weight"] else ""
         for col in COLUMNS_HISTORY:
-            if col not in history_df.columns: history_df[col] = 0.0 if col in ["Grus", "Pcs", "Weight", "Challan Weight", "Diff Weight"] else ""
+            if col not in history_df.columns:
+                history_df[col] = 0.0 if col in ["Grus", "Pcs", "Weight", "Challan Weight", "Diff Weight"] else ""
+
         return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
     except Exception as e:
+        st.error(f"Error fetching data: {e}")
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
 
 def send_update_to_sheet(params):
     try:
         res = requests.get(APPS_SCRIPT_URL, params=params, timeout=20)
-        if res.json().get("status") == "success":
+        res_data = res.json()
+        if res_data.get("status") == "success":
             st.toast("✅ Stock updated successfully!")
             st.cache_data.clear()
             st.session_state.form_key += 1
             st.rerun()
         else:
-            st.error(f"Backend Error: {res.json().get('message', 'Unknown error.')}")
+            err_msg = res_data.get("message", "Unknown script error.")
+            st.error(f"Backend Error: {err_msg}")
     except Exception as e:
         st.error(f"Transaction failed: {e}")
 
@@ -2301,15 +2319,26 @@ sheet_df, history_df = fetch_all_data()
 st.markdown("---")
 st.subheader("📄 Paper Sheet Stock Manager")
 
-if "form_key" not in st.session_state: st.session_state.form_key = 0
+with st.expander("📐 Quick CM to Inches Converter"):
+    col_cm1, col_cm2 = st.columns(2)
+    with col_cm1:
+        w_cm = st.number_input("Enter Width in CM", min_value=0.0, step=0.1, format="%.2f", key="standalone_w_cm_converter")
+    with col_cm2:
+        l_cm = st.number_input("Enter Length in CM", min_value=0.0, step=0.1, format="%.2f", key="standalone_l_cm_converter")
+    if w_cm > 0 or l_cm > 0:
+        st.success(f"**Converted Dimensions:** {w_cm / 2.54:.2f}″ (W) × {l_cm / 2.54:.2f}″ (L)\n\n*Original:* {w_cm:.2f} cm × {l_cm:.2f} cm")
+
+if "form_key" not in st.session_state:
+    st.session_state.form_key = 0
 key_suffix = st.session_state.form_key
 
 tab_entry, tab_history = st.tabs(["⚡ Record Transaction", "📜 Stock & History Log"])
 
 with tab_entry:
-    st.markdown("##### 🔍 Product & Specifications")
+    st.markdown("##### 🔍 Product & Specifications Selection")
+
     avail_p = sorted(list(set(sheet_df["Product"].astype(str).str.strip().unique()))) if not sheet_df.empty else []
-    
+
     if f"p_sel_{key_suffix}" in st.session_state and st.session_state[f"p_sel_{key_suffix}"] not in ["Select Product...", "➕ Add New..."]:
         selected_product = st.session_state[f"p_sel_{key_suffix}"]
         matched_specs = sheet_df[sheet_df["Product"].astype(str).str.strip() == selected_product.strip()]
@@ -2323,16 +2352,16 @@ with tab_entry:
 
     col_s0, col_s1, col_s2, col_s3 = st.columns(4)
     with col_s0:
-        sel_p = st.selectbox("Product", ["Select Product...", "➕ Add New..."] + avail_p, key=f"p_sel_{key_suffix}")
+        sel_p = st.selectbox("Product", options=["Select Product...", "➕ Add New..."] + avail_p, key=f"p_sel_{key_suffix}")
         final_p = st.text_input("New Product Name", key=f"np_{key_suffix}") if sel_p == "➕ Add New..." else (sel_p if sel_p != "Select Product..." else "")
     with col_s1:
-        sel_w = st.selectbox("Width", ["Select Width...", "➕ Add New..."] + avail_w, key=f"w_{key_suffix}")
+        sel_w = st.selectbox("Width", options=["Select Width...", "➕ Add New..."] + avail_w, key=f"w_{key_suffix}")
         final_w = st.text_input("New Width", key=f"nw_{key_suffix}") if sel_w == "➕ Add New..." else (sel_w if sel_w != "Select Width..." else "")
     with col_s2:
-        sel_l = st.selectbox("Length", ["Select Length...", "➕ Add New..."] + avail_l, key=f"l_{key_suffix}")
+        sel_l = st.selectbox("Length", options=["Select Length...", "➕ Add New..."] + avail_l, key=f"l_{key_suffix}")
         final_l = st.text_input("New Length", key=f"nl_{key_suffix}") if sel_l == "➕ Add New..." else (sel_l if sel_l != "Select Length..." else "")
     with col_s3:
-        sel_g = st.selectbox("GSM", ["Select GSM...", "➕ Add New..."] + avail_g, key=f"g_{key_suffix}")
+        sel_g = st.selectbox("GSM", options=["Select GSM...", "➕ Add New..."] + avail_g, key=f"g_{key_suffix}")
         final_g = st.text_input("New GSM", key=f"ng_{key_suffix}") if sel_g == "➕ Add New..." else (sel_g if sel_g != "Select GSM..." else "")
 
     if not (final_p and final_w and final_l and final_g):
@@ -2358,51 +2387,71 @@ with tab_entry:
         with col_t2:
             txn_date = st.date_input("Date", value=date.today(), key=f"dt_{key_suffix}")
 
-        col_e1, col_e2, col_e3 = st.columns(3)
-        with col_e1:
-            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus, args=(final_w, final_l, final_g))
-        with col_e2:
-            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs, args=(final_w, final_l, final_g))
-        with col_e3:
-            weight_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_in_{key_suffix}", on_change=sync_weight, args=(final_w, final_l, final_g))
+        grus_val = pcs_val = weight_val = challan_wt_val = calculated_diff = rest_weight = 0.0
+        apply_adjustment = False
 
-        # Dynamic Section based on Transaction Type
-        if action_type == "Used":
-            col_e4, col_e5, col_e6 = st.columns(3)
+        if action_type == "Purchased":
+            if f"g_in_{key_suffix}" not in st.session_state: st.session_state[f"g_in_{key_suffix}"] = 0.0
+            if f"pcs_in_{key_suffix}" not in st.session_state: st.session_state[f"pcs_in_{key_suffix}"] = 0
+            if f"wt_in_{key_suffix}" not in st.session_state: st.session_state[f"wt_in_{key_suffix}"] = 0.0
+
+            col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+            with col_e1:
+                grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_in_{key_suffix}", on_change=sync_grus, args=(final_w, final_l, final_g))
+            with col_e2:
+                pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"pcs_in_{key_suffix}", on_change=sync_pcs, args=(final_w, final_l, final_g))
+            with col_e3:
+                weight_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_in_{key_suffix}")
             with col_e4:
-                challan_wt_val = st.number_input("Weight in Challan (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"ch_wt_in_{key_suffix}", on_change=sync_challan_weight, args=(final_w, final_l, final_g))
-            with col_e5:
-                calculated_diff = round(weight_val - challan_wt_val, 3)
-                adj_check = st.checkbox(f"Weight Adjustment (Diff: {calculated_diff:.3f} Kg)", key=f"adj_chk_{key_suffix}")
-                final_diff = calculated_diff if adj_check else 0.0
-            with col_e6:
-                remark = st.text_input("Remark", key=f"rm_{key_suffix}")
-        else:
-            challan_wt_val = weight_val # Matches Calculated weight automatically for Purchased
-            final_diff = 0.0
-            col_e4, col_e5 = st.columns(2)
-            with col_e4:
-                st.info("ℹ️ Challan Weight is automatically recorded as Calculated Weight for Purchases.")
-            with col_e5:
-                remark = st.text_input("Remark", key=f"rm_{key_suffix}")
+                challan_wt_val = st.number_input("Weight in Challan (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"ch_wt_in_{key_suffix}")
+            
+            calculated_diff = round(weight_val - challan_wt_val, 3) if challan_wt_val > 0 else 0.0
+            remark = st.text_input("Remark", key=f"rm_{key_suffix}")
+
+        elif action_type == "Used":
+            col_u1, col_u2 = st.columns(2)
+            with col_u1:
+                challan_wt_val = st.number_input("Challan Weight Used (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"ch_wt_used_{key_suffix}")
+            
+            pcs_val = calculate_pcs_from_weight(final_w, final_l, final_g, challan_wt_val)
+            grus_val = round(pcs_val / 144.0, 2)
+            weight_val = calculate_weight(final_w, final_l, final_g, pcs_val)
+            
+            with col_u2:
+                st.text_input("Auto-Calculated Pieces", value=f"{pcs_val} Pcs ({grus_val:.2f} Grus)", disabled=True)
+            
+            st.markdown("---")
+            **⚖️ Stock Clearance / Adjustment**
+            rest_weight = round(curr_challan_weight - challan_wt_val, 3)
+            
+            col_a1, col_a2 = st.columns(2)
+            with col_a1:
+                st.text_input("Rest / Extra Weight in Stock (Kg)", value=f"{rest_weight:.3f}", disabled=True)
+            with col_a2:
+                st.write("") 
+                st.write("") 
+                apply_adjustment = st.checkbox("Weight Adjustment (Check to adjust rest weight to 'Diff Weight' and clear stock)", key=f"adj_chk_{key_suffix}")
+            
+            calculated_diff = rest_weight if apply_adjustment else 0.0
+            remark = st.text_input("Remark", key=f"rm_used_{key_suffix}")
 
         if st.button("Submit Entry", type="primary", key=f"btn_sub_{key_suffix}"):
             if action_type is None:
-                st.warning("Please select a Transaction Type (Purchased or Used).")
-            elif grus_val == 0 and pcs_val == 0 and challan_wt_val == 0:
+                st.warning("Please select a Transaction Type (Purchased or Used) before submitting.")
+            elif challan_wt_val == 0 and grus_val == 0:
                 st.warning("Please specify a quantity higher than 0.")
-            elif action_type == "Used" and pcs_val > curr_pcs:
-                st.error(f"Cannot subtract {pcs_val} Pcs. Available stock is only {curr_pcs} Pcs.")
+            elif action_type == "Used" and challan_wt_val > curr_challan_weight:
+                st.error(f"Cannot subtract {challan_wt_val:.3f} Kg. Available Challan Weight stock is only {curr_challan_weight:.3f} Kg.")
             else:
                 with st.spinner("Updating Google Sheet stock... Please wait."):
                     if action_type == "Purchased":
                         new_grus = curr_grus + grus_val
                         new_pcs = curr_pcs + pcs_val
                         new_challan_weight = curr_challan_weight + challan_wt_val
-                    else:
-                        new_grus = curr_grus - grus_val
-                        new_pcs = curr_pcs - pcs_val
-                        new_challan_weight = curr_challan_weight - challan_wt_val
+                    else:  # Used
+                        new_grus = 0.0 if apply_adjustment else (curr_grus - grus_val)
+                        new_pcs = 0 if apply_adjustment else (curr_pcs - pcs_val)
+                        new_challan_weight = 0.0 if apply_adjustment else (curr_challan_weight - challan_wt_val)
 
                     params = {
                         "action": "update_stock",
@@ -2416,7 +2465,7 @@ with tab_entry:
                         "pcs_change": int(pcs_val),
                         "weight_change": float(weight_val),
                         "challan_weight_change": float(challan_wt_val),
-                        "diff_weight_change": float(final_diff),
+                        "diff_weight_change": float(calculated_diff),
                         "new_grus": float(round(new_grus, 2)),
                         "new_pcs": int(new_pcs),
                         "new_challan_weight": float(round(new_challan_weight, 3)),
@@ -2426,6 +2475,7 @@ with tab_entry:
 
 with tab_history:
     st.markdown("### 📋 Current Master Stock (`sheet_stock`)")
+
     display_master_df = sheet_df.copy()
     if "Challan Weight" in display_master_df.columns:
         display_master_df["Challan Weight"] = pd.to_numeric(display_master_df["Challan Weight"], errors="coerce").fillna(0.0)
@@ -2437,7 +2487,8 @@ with tab_history:
             "Pcs": st.column_config.NumberColumn("Pcs", format="%d"),
             "Challan Weight": st.column_config.NumberColumn("Challan Weight (Kg)", format="%.3f"),
         },
-        use_container_width=True, hide_index=True,
+        use_container_width=True,
+        hide_index=True,
     )
 
     st.markdown("---")
@@ -2447,20 +2498,29 @@ with tab_history:
         st.info("No transaction history available.")
     else:
         filtered_df = history_df.copy()
+
         for col in ["Product", "Width", "Length", "GSM", "Type", "Remark"]:
-            if col in filtered_df.columns: filtered_df[col] = filtered_df[col].astype(str).str.strip()
+            if col in filtered_df.columns:
+                filtered_df[col] = filtered_df[col].astype(str).str.strip()
 
         with st.expander("🔍 Column Filter Controls", expanded=True):
             f_col1, f_col2, f_col3, f_col4 = st.columns(4)
-            with f_col1: f_type = st.multiselect("Filter Type", options=sorted(filtered_df["Type"].unique()), key=f"f_type_{key_suffix}")
-            with f_col2: f_prod = st.multiselect("Filter Product", options=sorted(filtered_df["Product"].unique()), key=f"f_prod_{key_suffix}")
-            with f_col3: f_width = st.multiselect("Filter Width", options=sorted(filtered_df["Width"].unique()), key=f"f_w_{key_suffix}")
-            with f_col4: f_length = st.multiselect("Filter Length", options=sorted(filtered_df["Length"].unique()), key=f"f_l_{key_suffix}")
+            with f_col1:
+                f_type = st.multiselect("Filter Type", options=sorted(filtered_df["Type"].unique()), key=f"f_type_{key_suffix}")
+            with f_col2:
+                f_prod = st.multiselect("Filter Product", options=sorted(filtered_df["Product"].unique()), key=f"f_prod_{key_suffix}")
+            with f_col3:
+                f_width = st.multiselect("Filter Width", options=sorted(filtered_df["Width"].unique()), key=f"f_w_{key_suffix}")
+            with f_col4:
+                f_length = st.multiselect("Filter Length", options=sorted(filtered_df["Length"].unique()), key=f"f_l_{key_suffix}")
 
             f_col5, f_col6, f_col7, f_col8 = st.columns(4)
-            with f_col5: f_gsm = st.multiselect("Filter GSM", options=sorted(filtered_df["GSM"].unique()), key=f"f_gsm_{key_suffix}")
-            with f_col6: search_remark = st.text_input("Filter Remark", key=f"f_rm_{key_suffix}")
-            with f_col7: search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
+            with f_col5:
+                f_gsm = st.multiselect("Filter GSM", options=sorted(filtered_df["GSM"].unique()), key=f"f_gsm_{key_suffix}")
+            with f_col6:
+                search_remark = st.text_input("Filter Remark", key=f"f_rm_{key_suffix}")
+            with f_col7:
+                search_global = st.text_input("Global Search", key=f"f_glob_{key_suffix}")
 
         if f_type: filtered_df = filtered_df[filtered_df["Type"].isin(f_type)]
         if f_prod: filtered_df = filtered_df[filtered_df["Product"].isin(f_prod)]
@@ -2471,7 +2531,8 @@ with tab_history:
         if search_global: filtered_df = filtered_df[filtered_df.astype(str).apply(lambda row: row.str.contains(search_global, case=False).any(), axis=1)]
 
         for col in ["Weight", "Challan Weight", "Diff Weight"]:
-            if col in filtered_df.columns: filtered_df[col] = pd.to_numeric(filtered_df[col], errors="coerce").fillna(0.0)
+            if col in filtered_df.columns:
+                filtered_df[col] = pd.to_numeric(filtered_df[col], errors="coerce").fillna(0.0)
 
         st.dataframe(
             filtered_df,
@@ -2482,7 +2543,8 @@ with tab_history:
                 "Challan Weight": st.column_config.NumberColumn("Challan Weight (Kg)", format="%.3f"),
                 "Diff Weight": st.column_config.NumberColumn("Diff Weight (Kg)", format="%.3f"),
             },
-            use_container_width=True, hide_index=True,
+            use_container_width=True,
+            hide_index=True,
         )
 
 # ==========================================
