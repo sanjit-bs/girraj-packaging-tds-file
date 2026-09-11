@@ -2232,7 +2232,6 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# --- Auto-Sync Callbacks (Triggers ONLY in "Used" Mode) ---
 def sync_grus(w, l, gsm, action_type):
     if action_type == "Used":
         k = st.session_state.form_key
@@ -2311,45 +2310,61 @@ with tab_entry:
         txn_date = st.date_input("Date", value=date.today(), key=f"dt_{fk}")
 
     st.markdown("---")
-    st.markdown("**🔍 Product & Specifications Selection (Cascading)**")
+    st.markdown("**🔍 Product & Specifications Selection**")
     
     df_clean = sheet_df.copy()
     for c in ["Product", "Width", "Length", "GSM"]:
         df_clean[c] = df_clean[c].astype(str).str.strip()
     
-    avail_p = sorted(list(set(df_clean["Product"].unique()))) if not df_clean.empty else []
-    
+    # Helper to get valid selection states
+    def get_sel(key):
+        v = st.session_state.get(key, "")
+        return v if v and not v.startswith("Select") and v != "➕ Add New..." else None
+
+    cp = get_sel(f"sp_{fk}")
+    cw = get_sel(f"sw_{fk}")
+    cl = get_sel(f"sl_{fk}")
+    cg = get_sel(f"sg_{fk}")
+
+    # Generate cross-filtered options
+    def get_opts(col):
+        t = df_clean.copy()
+        if col != "Product" and cp: t = t[t["Product"] == cp]
+        if col != "Width" and cw: t = t[t["Width"] == cw]
+        if col != "Length" and cl: t = t[t["Length"] == cl]
+        if col != "GSM" and cg: t = t[t["GSM"] == cg]
+        return sorted(list(set(t[col].unique()))) if not t.empty else []
+
+    ap = get_opts("Product")
+    aw = get_opts("Width")
+    al = get_opts("Length")
+    ag = get_opts("GSM")
+
+    # Auto-fill session state if only 1 valid option remains
+    if len(ap) == 1 and not cp: st.session_state[f"sp_{fk}"] = ap[0]
+    if len(aw) == 1 and not cw: st.session_state[f"sw_{fk}"] = aw[0]
+    if len(al) == 1 and not cl: st.session_state[f"sl_{fk}"] = al[0]
+    if len(ag) == 1 and not cg: st.session_state[f"sg_{fk}"] = ag[0]
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        opts_p = ["Select Product...", "➕ Add New..."] + avail_p
+        opts_p = ["Select Product...", "➕ Add New..."] + ap
         sel_p = st.selectbox("Product", opts_p, key=f"sp_{fk}")
         final_p = st.text_input("New Product", key=f"np_{fk}") if sel_p == "➕ Add New..." else (sel_p if sel_p != "Select Product..." else "")
-    
-    # Cascade Width (Auto-select if only 1 option available)
-    df_w = df_clean[df_clean["Product"] == final_p] if final_p and final_p in avail_p else df_clean
-    avail_w = sorted(list(set(df_w["Width"].unique()))) if not df_w.empty else []
-    opts_w = ["Select Width...", "➕ Add New..."] + avail_w
-    idx_w = 2 if (final_p and len(avail_w) == 1) else 0
+
     with c2:
-        sel_w = st.selectbox("Width", opts_w, index=idx_w, key=f"sw_{fk}")
+        opts_w = ["Select Width...", "➕ Add New..."] + aw
+        sel_w = st.selectbox("Width", opts_w, key=f"sw_{fk}")
         final_w = st.text_input("New Width", key=f"nw_{fk}") if sel_w == "➕ Add New..." else (sel_w if sel_w != "Select Width..." else "")
 
-    # Cascade Length (Auto-select if only 1 option available)
-    df_l = df_w[df_w["Width"] == final_w] if final_w and final_w in avail_w else df_w
-    avail_l = sorted(list(set(df_l["Length"].unique()))) if not df_l.empty else []
-    opts_l = ["Select Length...", "➕ Add New..."] + avail_l
-    idx_l = 2 if (final_w and len(avail_l) == 1) else 0
     with c3:
-        sel_l = st.selectbox("Length", opts_l, index=idx_l, key=f"sl_{fk}")
+        opts_l = ["Select Length...", "➕ Add New..."] + al
+        sel_l = st.selectbox("Length", opts_l, key=f"sl_{fk}")
         final_l = st.text_input("New Length", key=f"nl_{fk}") if sel_l == "➕ Add New..." else (sel_l if sel_l != "Select Length..." else "")
 
-    # Cascade GSM (Auto-select if only 1 option available)
-    df_g = df_l[df_l["Length"] == final_l] if final_l and final_l in avail_l else df_l
-    avail_g = sorted(list(set(df_g["GSM"].unique()))) if not df_g.empty else []
-    opts_g = ["Select GSM...", "➕ Add New..."] + avail_g
-    idx_g = 2 if (final_l and len(avail_g) == 1) else 0
     with c4:
-        sel_g = st.selectbox("GSM", opts_g, index=idx_g, key=f"sg_{fk}")
+        opts_g = ["Select GSM...", "➕ Add New..."] + ag
+        sel_g = st.selectbox("GSM", opts_g, key=f"sg_{fk}")
         final_g = st.text_input("New GSM", key=f"ng_{fk}") if sel_g == "➕ Add New..." else (sel_g if sel_g != "Select GSM..." else "")
 
     if final_p and final_w and final_l and final_g:
@@ -2447,7 +2462,6 @@ with tab_history:
     st.markdown("---")
     st.markdown("**📜 Transaction History**")
     st.dataframe(history_df, use_container_width=True, hide_index=True)
-
 
 # ==========================================
 ################################## Purchase Order & Verification System #########################################
