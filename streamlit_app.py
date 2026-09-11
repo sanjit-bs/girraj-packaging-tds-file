@@ -2321,28 +2321,35 @@ with tab_entry:
     
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        sel_p = st.selectbox("Product", ["Select Product...", "➕ Add New..."] + avail_p, key=f"sp_{fk}")
+        opts_p = ["Select Product...", "➕ Add New..."] + avail_p
+        sel_p = st.selectbox("Product", opts_p, key=f"sp_{fk}")
         final_p = st.text_input("New Product", key=f"np_{fk}") if sel_p == "➕ Add New..." else (sel_p if sel_p != "Select Product..." else "")
     
-    # Cascade Width
+    # Cascade Width (Auto-select if only 1 option available)
     df_w = df_clean[df_clean["Product"] == final_p] if final_p and final_p in avail_p else df_clean
     avail_w = sorted(list(set(df_w["Width"].unique()))) if not df_w.empty else []
+    opts_w = ["Select Width...", "➕ Add New..."] + avail_w
+    idx_w = 2 if (final_p and len(avail_w) == 1) else 0
     with c2:
-        sel_w = st.selectbox("Width", ["Select Width...", "➕ Add New..."] + avail_w, key=f"sw_{fk}")
+        sel_w = st.selectbox("Width", opts_w, index=idx_w, key=f"sw_{fk}")
         final_w = st.text_input("New Width", key=f"nw_{fk}") if sel_w == "➕ Add New..." else (sel_w if sel_w != "Select Width..." else "")
 
-    # Cascade Length
+    # Cascade Length (Auto-select if only 1 option available)
     df_l = df_w[df_w["Width"] == final_w] if final_w and final_w in avail_w else df_w
     avail_l = sorted(list(set(df_l["Length"].unique()))) if not df_l.empty else []
+    opts_l = ["Select Length...", "➕ Add New..."] + avail_l
+    idx_l = 2 if (final_w and len(avail_l) == 1) else 0
     with c3:
-        sel_l = st.selectbox("Length", ["Select Length...", "➕ Add New..."] + avail_l, key=f"sl_{fk}")
+        sel_l = st.selectbox("Length", opts_l, index=idx_l, key=f"sl_{fk}")
         final_l = st.text_input("New Length", key=f"nl_{fk}") if sel_l == "➕ Add New..." else (sel_l if sel_l != "Select Length..." else "")
 
-    # Cascade GSM
+    # Cascade GSM (Auto-select if only 1 option available)
     df_g = df_l[df_l["Length"] == final_l] if final_l and final_l in avail_l else df_l
     avail_g = sorted(list(set(df_g["GSM"].unique()))) if not df_g.empty else []
+    opts_g = ["Select GSM...", "➕ Add New..."] + avail_g
+    idx_g = 2 if (final_l and len(avail_g) == 1) else 0
     with c4:
-        sel_g = st.selectbox("GSM", ["Select GSM...", "➕ Add New..."] + avail_g, key=f"sg_{fk}")
+        sel_g = st.selectbox("GSM", opts_g, index=idx_g, key=f"sg_{fk}")
         final_g = st.text_input("New GSM", key=f"ng_{fk}") if sel_g == "➕ Add New..." else (sel_g if sel_g != "Select GSM..." else "")
 
     if final_p and final_w and final_l and final_g:
@@ -2360,7 +2367,6 @@ with tab_entry:
         st.markdown("---")
         st.markdown("**📝 Entry Details**")
 
-        # Ensure session states exist
         for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}"]:
             if key not in st.session_state:
                 st.session_state[key] = 0.0 if "g" in key or "cw" in key else 0
@@ -2373,13 +2379,12 @@ with tab_entry:
         with e3:
             cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g, action_type))
         
-        wt_val = 0.0 # Default Calculated Weight
+        wt_val = 0.0 
         if action_type == "Purchased":
             wt_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_{fk}")
         
         remark = st.text_input("Remark", key=f"rm_{fk}")
 
-        # Optional Weight Adjustment (Only for 'Used')
         adj_check = False
         if action_type == "Used":
             rem_wt = round(curr_cw - cw_val, 3)
@@ -2424,7 +2429,7 @@ with tab_entry:
                         "gsm": final_g,
                         "grus_change": float(grus_val),
                         "pcs_change": int(pcs_val),
-                        "weight_change": float(wt_val), # Only populated on Purchased
+                        "weight_change": float(wt_val), 
                         "challan_weight_change": float(cw_val),
                         "diff_weight_change": float(diff_weight_change),
                         "new_grus": float(round(new_grus, 2)),
