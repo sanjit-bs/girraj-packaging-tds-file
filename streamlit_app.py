@@ -2360,6 +2360,7 @@ def send_update_to_sheet(params):
     except Exception as e:
         st.error(f"Transaction failed: {e}")
 #==============================================================#
+st.markdown("---")
 with st.expander("📐 Quick CM to Inches Converter"):
     col_cm1, col_cm2 = st.columns(2)
     with col_cm1:
