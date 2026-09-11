@@ -2303,7 +2303,7 @@ fk = st.session_state.form_key
 tab_entry, tab_history = st.tabs(["⚡ Record Transaction", "📜 Stock & History Log"])
 
 with tab_entry:
-    **Transaction Type & Date**
+    st.markdown("**Transaction Type & Date**")
     col_t1, col_t2 = st.columns(2)
     with col_t1:
         action_type = st.radio("Transaction Type", ["Purchased", "Used"], horizontal=True, key=f"type_{fk}")
@@ -2311,7 +2311,7 @@ with tab_entry:
         txn_date = st.date_input("Date", value=date.today(), key=f"dt_{fk}")
 
     st.markdown("---")
-    **🔍 Product & Specifications Selection (Cascading)**
+    st.markdown("**🔍 Product & Specifications Selection (Cascading)**")
     
     df_clean = sheet_df.copy()
     for c in ["Product", "Width", "Length", "GSM"]:
@@ -2358,7 +2358,7 @@ with tab_entry:
         st.info(f"**Current Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs | Challan Weight: {curr_cw:.3f} Kg")
 
         st.markdown("---")
-        **📝 Entry Details**
+        st.markdown("**📝 Entry Details**")
 
         # Ensure session states exist
         for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}"]:
@@ -2437,10 +2437,10 @@ with tab_entry:
         st.info("Select Product, Width, Length, and GSM to proceed.")
 
 with tab_history:
-    **📋 Current Master Stock**
+    st.markdown("**📋 Current Master Stock**")
     st.dataframe(sheet_df, use_container_width=True, hide_index=True)
     st.markdown("---")
-    **📜 Transaction History**
+    st.markdown("**📜 Transaction History**")
     st.dataframe(history_df, use_container_width=True, hide_index=True)
 
 
