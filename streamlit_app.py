@@ -2189,7 +2189,7 @@ with tab_history:
 # ================================================================================================
 ####################################### Paper Sheet Stock #######################################
 # ================================================================================================
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9FA9ITHoiUxnMturLUshvNhx22uIAlCWIzDUQwDCzIRh52OGSUYd0Wsc97Ahj1oPp/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNDd8Zybovl7rso9STNpyqmqxQRUZC80h_qo59UA03iGDYLiWmEJLnGqlG2KFWXPMT/exec"
 
 # Master sheet setup (tracks Challan Weight as primary weight stock)
 COLUMNS_MASTER = [
