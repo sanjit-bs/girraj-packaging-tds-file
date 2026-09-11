@@ -2189,7 +2189,7 @@ with tab_history:
 # ================================================================================================
 ####################################### Paper Sheet Stock #######################################
 # ================================================================================================
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNDd8Zybovl7rso9STNpyqmqxQRUZC80h_qo59UA03iGDYLiWmEJLnGqlG2KFWXPMT/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9FA9ITHoiUxnMturLUshvNhx22uIAlCWIzDUQwDCzIRh52OGSUYd0Wsc97Ahj1oPp/exec"
 
 # Master sheet setup (tracks Challan Weight as primary weight stock)
 COLUMNS_MASTER = [
@@ -2220,11 +2220,19 @@ COLUMNS_HISTORY = [
 ]
 
 
+def clean_float(val):
+    """Safely extracts a floating-point number from string or numeric input."""
+    if val is None:
+        return 0.0
+    try:
+        cleaned = re.sub(r"[^\d.]", "", str(val))
+        return float(cleaned) if cleaned else 0.0
+    except (ValueError, TypeError):
+        return 0.0
+
+
 def clean_date_column(df, col_name="Date"):
-    """
-    Converts Apps Script ISO UTC timestamps (e.g. '2026-08-31T18:30:00.000Z')
-    back to Asia/Kolkata (IST) DD/MM/YYYY format.
-    """
+    """Converts Apps Script ISO UTC timestamps back to Asia/Kolkata (IST) DD/MM/YYYY format."""
     if df.empty or col_name not in df.columns:
         return df
 
@@ -2256,28 +2264,30 @@ def clean_date_column(df, col_name="Date"):
 
 
 def calculate_weight(w, l, gsm, pcs):
-    try:
-        w_float, l_float, gsm_float, pcs_int = (
-            float(w),
-            float(l),
-            float(gsm),
-            int(pcs),
-        )
-        return round((((w_float * l_float * gsm_float) / 1550) / 1000) * pcs_int, 3)
-    except (ValueError, TypeError):
-        return 0.000
+    w_f, l_f, gsm_f, pcs_i = (
+        clean_float(w),
+        clean_float(l),
+        clean_float(gsm),
+        int(clean_float(pcs)),
+    )
+    if w_f > 0 and l_f > 0 and gsm_f > 0 and pcs_i > 0:
+        return round((((w_f * l_f * gsm_f) / 1550) / 1000) * pcs_i, 3)
+    return 0.000
 
 
 def calculate_pcs_from_weight(w, l, gsm, weight):
-    try:
-        w_f, l_f, gsm_f, wt_f = float(w), float(l), float(gsm), float(weight)
-        if w_f > 0 and l_f > 0 and gsm_f > 0:
-            return int(round((wt_f * 1000 * 1550) / (w_f * l_f * gsm_f)))
-    except (ValueError, TypeError, ZeroDivisionError):
-        pass
+    w_f, l_f, gsm_f, wt_f = (
+        clean_float(w),
+        clean_float(l),
+        clean_float(gsm),
+        clean_float(weight),
+    )
+    if w_f > 0 and l_f > 0 and gsm_f > 0 and wt_f > 0:
+        return int(round((wt_f * 1000 * 1550) / (w_f * l_f * gsm_f)))
     return 0
 
 
+# Synchronizers triggered on user input changes
 def sync_grus(w, l, gsm):
     key_suf = st.session_state.form_key
     g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
@@ -2313,7 +2323,9 @@ def sync_challan_weight(w, l, gsm):
 @st.cache_data(ttl=5)
 def fetch_all_data():
     try:
-        response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=30)
+        response = requests.get(
+            f"{APPS_SCRIPT_URL}?action=read_all", timeout=20
+        )
         data = response.json()
         master_df = pd.DataFrame(data.get("master", []))
         history_df = pd.DataFrame(data.get("history", []))
@@ -2329,7 +2341,8 @@ def fetch_all_data():
             if col not in history_df.columns:
                 history_df[col] = (
                     0.0
-                    if col in ["Grus", "Pcs", "Weight", "Challan Weight", "Diff Weight"]
+                    if col
+                    in ["Grus", "Pcs", "Weight", "Challan Weight", "Diff Weight"]
                     else ""
                 )
 
@@ -2343,7 +2356,7 @@ def fetch_all_data():
 
 def send_update_to_sheet(params):
     try:
-        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=30)
+        res = requests.get(APPS_SCRIPT_URL, params=params, timeout=20)
         res_data = res.json()
         if res_data.get("status") == "success":
             st.toast("✅ Stock updated successfully!")
@@ -2357,9 +2370,7 @@ def send_update_to_sheet(params):
         st.error(f"Transaction failed: {e}")
 
 
-# ======================================================
 # Main Application Setup
-# ======================================================
 sheet_df, history_df = fetch_all_data()
 
 st.markdown("---")
@@ -2538,6 +2549,7 @@ with tab_entry:
                 "Date", value=date.today(), key=f"dt_{key_suffix}"
             )
 
+        # Initialize widget keys before rendering inputs
         if f"g_in_{key_suffix}" not in st.session_state:
             st.session_state[f"g_in_{key_suffix}"] = 0.0
         if f"pcs_in_{key_suffix}" not in st.session_state:
