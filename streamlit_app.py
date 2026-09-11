@@ -2603,11 +2603,11 @@ with tab_entry:
             )
         with col_e5:
             calculated_diff = round(weight_val - challan_wt_val, 3)
+            # Removed the 'key' argument so Streamlit doesn't cache the stale 0.000 value
             st.text_input(
                 "Calculated Difference (Kg)",
                 value=f"{calculated_diff:.3f}",
-                disabled=True,
-                key=f"diff_disp_{key_suffix}",
+                disabled=True
             )
         with col_e6:
             remark = st.text_input("Remark", key=f"rm_{key_suffix}")
