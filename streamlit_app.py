@@ -2421,7 +2421,7 @@ with tab_entry:
                 st.text_input("Auto-Calculated Pieces", value=f"{pcs_val} Pcs ({grus_val:.2f} Grus)", disabled=True)
             
             st.markdown("---")
-             **⚖️ Stock Clearance / Adjustment**
+            st.markdown(**⚖️ Stock Clearance / Adjustment**)
             rest_weight = round(curr_challan_weight - challan_wt_val, 3)
             
             col_a1, col_a2 = st.columns(2)
