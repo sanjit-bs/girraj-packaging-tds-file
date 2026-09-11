@@ -55,7 +55,7 @@ def get_financial_year(payment_date):
         return f"{year}-{year + 1}"
     return f"{year - 1}-{year}"
 
-@st.cache_data(ttl=60)  # Caches data in memory for 5 minutes
+#@st.cache_data(ttl=60)  # Caches data in memory for 5 minutes
 def load_data():
     records = sheet.get_all_records()
 
@@ -474,7 +474,7 @@ delivery_sheet = connect_delivery_sheet()
 inv_value_sheet = connect_invoice_value_sheet()
 
 
-@st.cache_data(ttl=10)
+#@st.cache_data(ttl=10)
 def load_delivery_data():
     raw_data = delivery_sheet.get_all_values()
     if not raw_data or len(raw_data) < 2:
@@ -504,7 +504,7 @@ def load_delivery_data():
     return df
 
 
-@st.cache_data(ttl=10)
+#@st.cache_data(ttl=10)
 def load_invoice_value_data():
     raw_data = inv_value_sheet.get_all_values()
     if not raw_data or len(raw_data) < 2:
@@ -1043,7 +1043,7 @@ def connect_stock_sheet():
 
 stock_sheet = connect_stock_sheet()
 
-@st.cache_data(ttl=10)
+#@st.cache_data(ttl=10)
 def load_stock_data():
     records = stock_sheet.get_all_records()
     if not records:
@@ -1228,7 +1228,7 @@ def clean_date_column(df, col_name="Date"):
     return df
 
 
-@st.cache_data(ttl=5)
+#@st.cache_data(ttl=5)
 def fetch_data():
     try:
         response = requests.get(WEB_APP_URL, timeout=20).json()
@@ -1496,7 +1496,7 @@ with tab3:
 
 unloading_sheet = connect_unloading_sheet()
 
-@st.cache_data(ttl=10)  # Shorter TTL cache allows manual deletions to sync quickly
+#@st.cache_data(ttl=10)  # Shorter TTL cache allows manual deletions to sync quickly
 def load_unloading_data():
     records = unloading_sheet.get_all_records()
     if not records:
@@ -1690,7 +1690,7 @@ def update_master_breakup(curr_breakup_str, txn_breakup_str, action_type):
 # ------------------------------------------------------
 # Load Data via Apps Script
 # ------------------------------------------------------
-@st.cache_data(ttl=5)
+#@st.cache_data(ttl=5)
 def fetch_all_data():
     try:
         response = requests.get(
@@ -2314,7 +2314,7 @@ def sync_challan_weight(w, l, gsm):
         st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs)
 
 
-@st.cache_data(ttl=5)
+#@st.cache_data(ttl=5)
 def fetch_all_data():
     try:
         response = requests.get(f"{APPS_SCRIPT_URL}?action=read_all", timeout=45)
