@@ -2189,7 +2189,7 @@ with tab_history:
 # ================================================================================================
 ####################################### Paper Sheet Stock #######################################
 # ================================================================================================
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNDd8Zybovl7rso9STNpyqmqxQRUZC80h_qo59UA03iGDYLiWmEJLnGqlG2KFWXPMT/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9FA9ITHoiUxnMturLUshvNhx22uIAlCWIzDUQwDCzIRh52OGSUYd0Wsc97Ahj1oPp/exec"
 
 # Master sheet setup (tracks Challan Weight as primary weight stock)
 COLUMNS_MASTER = [
@@ -2268,6 +2268,16 @@ def calculate_weight(w, l, gsm, pcs):
         return 0.000
 
 
+def calculate_pcs_from_weight(w, l, gsm, weight):
+    try:
+        w_f, l_f, gsm_f, wt_f = float(w), float(l), float(gsm), float(weight)
+        if w_f > 0 and l_f > 0 and gsm_f > 0:
+            return int(round((wt_f * 1000 * 1550) / (w_f * l_f * gsm_f)))
+    except (ValueError, TypeError, ZeroDivisionError):
+        pass
+    return 0
+
+
 def sync_grus(w, l, gsm):
     key_suf = st.session_state.form_key
     g_val = st.session_state.get(f"g_in_{key_suf}", 0.0)
@@ -2281,6 +2291,23 @@ def sync_pcs(w, l, gsm):
     pcs_val = st.session_state.get(f"pcs_in_{key_suf}", 0)
     st.session_state[f"g_in_{key_suf}"] = round(float(pcs_val) / 144.0, 2)
     st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs_val)
+
+
+def sync_weight(w, l, gsm):
+    key_suf = st.session_state.form_key
+    wt_val = st.session_state.get(f"wt_in_{key_suf}", 0.0)
+    pcs = calculate_pcs_from_weight(w, l, gsm, wt_val)
+    st.session_state[f"pcs_in_{key_suf}"] = pcs
+    st.session_state[f"g_in_{key_suf}"] = round(float(pcs) / 144.0, 2)
+
+
+def sync_challan_weight(w, l, gsm):
+    key_suf = st.session_state.form_key
+    ch_wt_val = st.session_state.get(f"ch_wt_in_{key_suf}", 0.0)
+    pcs = calculate_pcs_from_weight(w, l, gsm, ch_wt_val)
+    st.session_state[f"pcs_in_{key_suf}"] = pcs
+    st.session_state[f"g_in_{key_suf}"] = round(float(pcs) / 144.0, 2)
+    st.session_state[f"wt_in_{key_suf}"] = calculate_weight(w, l, gsm, pcs)
 
 
 @st.cache_data(ttl=5)
@@ -2517,6 +2544,8 @@ with tab_entry:
             st.session_state[f"pcs_in_{key_suffix}"] = 0
         if f"wt_in_{key_suffix}" not in st.session_state:
             st.session_state[f"wt_in_{key_suffix}"] = 0.0
+        if f"ch_wt_in_{key_suffix}" not in st.session_state:
+            st.session_state[f"ch_wt_in_{key_suffix}"] = 0.0
 
         col_e1, col_e2, col_e3 = st.columns(3)
         with col_e1:
@@ -2545,6 +2574,8 @@ with tab_entry:
                 step=0.001,
                 format="%.3f",
                 key=f"wt_in_{key_suffix}",
+                on_change=sync_weight,
+                args=(final_w, final_l, final_g),
             )
 
         col_e4, col_e5, col_e6 = st.columns(3)
@@ -2555,6 +2586,8 @@ with tab_entry:
                 step=0.001,
                 format="%.3f",
                 key=f"ch_wt_in_{key_suffix}",
+                on_change=sync_challan_weight,
+                args=(final_w, final_l, final_g),
             )
         with col_e5:
             calculated_diff = round(weight_val - challan_wt_val, 3)
