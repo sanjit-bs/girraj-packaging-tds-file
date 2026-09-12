@@ -2191,6 +2191,8 @@ with tab_history:
 # ================================================================================================
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNDd8Zybovl7rso9STNpyqmqxQRUZC80h_qo59UA03iGDYLiWmEJLnGqlG2KFWXPMT/exec"
 
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9FA9ITHoiUxnMturLUshvNhx22uIAlCWIzDUQwDCzIRh52OGSUYd0Wsc97Ahj1oPp/exec"
+
 COLUMNS_MASTER = [
     "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Challan Weight", "Remark"
 ]
@@ -2232,31 +2234,36 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# Auto-Sync Callbacks (Now applies to both Purchased and Used)
-def sync_grus(w, l, gsm):
+# --- Auto-Sync Callbacks with Instant Rerun ---
+def sync_from_grus(w, l, gsm):
     k = st.session_state.form_key
     g = st.session_state.get(f"g_{k}", 0.0)
     pcs = int(round(g * 144))
-    st.session_state[f"p_{k}"] = pcs
     calc_wt = get_calc_weight(w, l, gsm, pcs)
+    
+    st.session_state[f"p_{k}"] = pcs
     st.session_state[f"cw_{k}"] = calc_wt
     st.session_state[f"wt_{k}"] = calc_wt
 
-def sync_pcs(w, l, gsm):
+def sync_from_pcs(w, l, gsm):
     k = st.session_state.form_key
     pcs = st.session_state.get(f"p_{k}", 0)
-    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
+    g = round(float(pcs) / 144.0, 2)
     calc_wt = get_calc_weight(w, l, gsm, pcs)
+    
+    st.session_state[f"g_{k}"] = g
     st.session_state[f"cw_{k}"] = calc_wt
     st.session_state[f"wt_{k}"] = calc_wt
 
-def sync_weight(w, l, gsm):
+def sync_from_cw(w, l, gsm):
     k = st.session_state.form_key
-    wt = st.session_state.get(f"cw_{k}", 0.0)
-    pcs = get_calc_pcs(w, l, gsm, wt)
+    cw = st.session_state.get(f"cw_{k}", 0.0)
+    pcs = get_calc_pcs(w, l, gsm, cw)
+    g = round(float(pcs) / 144.0, 2)
+    
     st.session_state[f"p_{k}"] = pcs
-    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
-    st.session_state[f"wt_{k}"] = wt
+    st.session_state[f"g_{k}"] = g
+    st.session_state[f"wt_{k}"] = cw
 
 @st.cache_data(ttl=5)
 def fetch_all_data():
@@ -2382,23 +2389,25 @@ with tab_entry:
         st.markdown("---")
         st.markdown("**📝 Entry Details**")
 
-        # Initialize all entry fields into session state prior to rendering
-        for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}", f"wt_{fk}"]:
-            if key not in st.session_state:
-                st.session_state[key] = 0.0 if "g" in key or "cw" in key or "wt" in key else 0
+        # Initialize session state keys safely
+        if f"g_{fk}" not in st.session_state: st.session_state[f"g_{fk}"] = 0.0
+        if f"p_{fk}" not in st.session_state: st.session_state[f"p_{fk}"] = 0
+        if f"cw_{fk}" not in st.session_state: st.session_state[f"cw_{fk}"] = 0.0
+        if f"wt_{fk}" not in st.session_state: st.session_state[f"wt_{fk}"] = 0.0
 
         e1, e2, e3 = st.columns(3)
         with e1:
-            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_grus, args=(final_w, final_l, final_g))
+            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_from_grus, args=(final_w, final_l, final_g))
         with e2:
-            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_pcs, args=(final_w, final_l, final_g))
+            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_from_pcs, args=(final_w, final_l, final_g))
         with e3:
-            cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g))
+            cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_from_cw, args=(final_w, final_l, final_g))
         
-        wt_val = 0.0 
         if action_type == "Purchased":
             wt_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_{fk}")
-        
+        else:
+            wt_val = 0.0
+
         remark = st.text_input("Remark", key=f"rm_{fk}")
 
         adj_check = False
@@ -2463,202 +2472,6 @@ with tab_history:
     st.markdown("---")
     st.markdown("**📜 Transaction History**")
     st.dataframe(history_df, use_container_width=True, hide_index=True)
-    
-# ==========================================
-################################## Purchase Order & Verification System #########################################
-# ==========================================
-PURCHASE_APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzjGmi-PjHT0P8hFmffHhuNdjI_LVInLWp4aZko7lYG6VFG44_gezAZTKpAc7TJntPv/exec"
-
-CREDITORS_LIST = [
-    "Select Creditor...", "BALAJI ENTERPRISE", "DHANUKA UDYOG PRIVATE LIMITED", 
-    "EVEREST PAPER MILLS (P) LTD.", "KRISHNA TRADERS", "PAPERS (India)", 
-    "PS INDUSTRIES", "Reflection Papers Pvt. Ltd.", "RIPCO TRADERS PVT. LTD.", 
-    "RM INDUSTRIAL EQUIPMENTS", "Samir Board World", "SHIV SHAKTI TRADERS", 
-    "Shree Durga Trading Co.", "Star Trading Corporation", "STARK RIDGE PAPER PVT LTD", 
-    "The Synthetic Glue & Chemical Industries", "VIJAY ENTERPRISE"
-]
-
-st.markdown("---")
-st.subheader("📦 Purchase Order & Verification System")
-
-tab1, tab2 = st.tabs(["📝 New Order Entry", "🔍 Verify Pending Deliveries"])
-
-# Initialize session state tracking
-if "item_count" not in st.session_state:
-    st.session_state.item_count = 1
-if "form_version" not in st.session_state:
-    st.session_state.form_version = 0
-
-# ------------------------------------------------------
-# TAB 1: NEW MULTI-PRODUCT ORDER ENTRY
-# ------------------------------------------------------
-with tab1:
-    def add_product_row():
-        st.session_state.item_count += 1
-
-    v = st.session_state.form_version  # Version suffix for widget keys
-
-    with st.container(border=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            creditor = st.selectbox("Supplier / Creditor *", CREDITORS_LIST, key=f"creditor_{v}")
-        with col2:
-            order_date = st.date_input("Order Date", value=date.today(), key=f"date_{v}")
-
-    st.markdown("#### Product Details")
-    order_items = []
-    grand_total = 0.0
-
-    with st.container(border=True):
-        for i in range(st.session_state.item_count):
-            st.markdown(f"**Item {i+1}**")
-            c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
-            
-            with c1:
-                p_desc = st.text_input("Product Description", key=f"prod_{v}_{i}")
-            with c2:
-                p_rate = st.number_input("Rate (₹)", min_value=0.0, step=1.0, format="%.2f", key=f"rate_{v}_{i}")
-            with c3:
-                p_qty = st.number_input("Quantity", min_value=0.0, step=1.0, key=f"qty_{v}_{i}")
-            
-            p_amt = p_rate * p_qty
-            grand_total += p_amt
-            
-            with c4:
-                st.metric(label="Amount", value=f"₹ {p_amt:,.2f}")
-                
-            if p_desc.strip():
-                order_items.append({
-                    "Product": p_desc.strip(),
-                    "Rate": p_rate,
-                    "Quantity": p_qty,
-                    "Amount": p_amt
-                })
-                
-        st.button("➕ Add Another Product", on_click=add_product_row)
-
-    st.metric("Grand Total (₹)", f"₹ {grand_total:,.2f}")
-
-    if st.button("Save New Order", type="primary"):
-        if creditor == "Select Creditor...":
-            st.warning("⚠️ Please select a Creditor.")
-        elif not order_items:
-            st.warning("⚠️ Please enter at least one product with a description.")
-        else:
-            payload = {
-                "action": "insert",
-                "Date": order_date.strftime("%Y-%m-%d"),
-                "Creditor": creditor,
-                "Status": "⏳ Pending Delivery",
-                "CancellationReason": "",
-                "Items": order_items
-            }
-            try:
-                with st.spinner("Saving to Google Sheets..."):
-                    res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
-                    if res.status_code == 200:
-                        st.toast(f"✅ Saved {len(order_items)} item(s) for {creditor}!")
-                        
-                        # Reset fields safely by incrementing form version
-                        st.session_state.form_version += 1
-                        st.session_state.item_count = 1
-                        st.rerun()
-                    else:
-                        st.error(f"⚠️ Server returned status code {res.status_code}")
-            except Exception as e:
-                st.error(f"❌ Connection error: {e}")
-
-# ------------------------------------------------------
-# TAB 2: VERIFICATION DASHBOARD (PENDING ORDERS)
-# ------------------------------------------------------
-with tab2:
-    st.subheader("📋 Pending Deliveries & Verification")
-    
-    if st.button("🔄 Refresh Pending List"):
-        st.rerun()
-
-    # Fetch Pending Entries
-    pending_list = []
-    try:
-        payload = {"action": "read_pending"}
-        response = requests.post(PURCHASE_APPS_SCRIPT_URL, json=payload, timeout=15)
-        
-        if response.status_code == 200:
-            content_type = response.headers.get("Content-Type", "")
-            if "application/json" in content_type:
-                data = response.json()
-                if isinstance(data, list):
-                    pending_list = data
-                elif isinstance(data, dict) and "error" in data:
-                    st.error(f"Apps Script Error: {data['error']}")
-            else:
-                st.error("⚠️ Access Denied: Apps Script returned HTML instead of JSON.")
-        else:
-            st.error(f"Failed with status code: {response.status_code}")
-    except Exception as e:
-        st.error(f"Failed to fetch pending list: {e}")
-
-    if not pending_list:
-        st.info("🎉 No pending orders found in 'purchase_order_entry'!")
-    else:
-        st.markdown(f"Found **{len(pending_list)}** item(s) awaiting delivery verification.")
-        
-        for idx, item in enumerate(pending_list):
-            with st.container(border=True):
-                st.markdown(f"##### 📅 Date: `{item.get('date')}` | Creditor: **{item.get('creditor')}**")
-                
-                c1, c2, c3, c4 = st.columns([3, 1.5, 1.5, 2])
-                c1.write(f"**Product:** {item.get('product')}")
-                c2.write(f"**Rate:** ₹{item.get('rate')}")
-                c3.write(f"**Qty:** {item.get('quantity')}")
-                c4.write(f"**Total:** ₹{item.get('amount')}")
-
-                st.markdown("---")
-                
-                act_col1, act_col2 = st.columns([2, 4])
-                
-                with act_col1:
-                    action_choice = st.radio(
-                        "Verification Action:",
-                        ["Keep Pending", "✅ Verify Order", "❌ Cancel Order"],
-                        key=f"act_{idx}"
-                    )
-
-                with act_col2:
-                    reason_text = ""
-                    if action_choice == "❌ Cancel Order":
-                        reason_text = st.text_input(
-                            "Cancellation Reason *", 
-                            placeholder="Enter reason (e.g., Damaged goods, Rate mismatch)", 
-                            key=f"reason_{idx}"
-                        )
-
-                    if action_choice != "Keep Pending":
-                        btn_label = "Confirm & Cancel" if action_choice == "❌ Cancel Order" else "Confirm & Verify"
-                        
-                        if st.button(btn_label, key=f"btn_{idx}", type="primary"):
-                            if action_choice == "❌ Cancel Order" and not reason_text.strip():
-                                st.warning("⚠️ Please provide a cancellation reason before submitting.")
-                            else:
-                                new_status = "✅ Verified" if action_choice == "✅ Verify Order" else "❌ Cancelled"
-                                
-                                update_payload = {
-                                    "action": "update_status",
-                                    "rowIndex": item.get("rowIndex"),
-                                    "status": new_status,
-                                    "cancellationReason": reason_text.strip()
-                                }
-
-                                try:
-                                    with st.spinner("Updating status..."):
-                                        res = requests.post(PURCHASE_APPS_SCRIPT_URL, json=update_payload, timeout=15)
-                                        if res.status_code == 200:
-                                            st.toast(f"Status updated to {new_status}!")
-                                            st.rerun()
-                                        else:
-                                            st.error("Failed to update status in Google Sheet.")
-                                except Exception as e:
-                                    st.error(f"Error updating record: {e}")
 
 #################### ---------------- Quality Test Report Generator ------------------------ #########################
 st.markdown("---")
