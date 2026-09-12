@@ -2232,29 +2232,21 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# --- Callbacks for "Used" Mode ---
+# --- Callbacks: Syncs Grus/Pcs universally, but ONLY forces Challan Weight in "Used" ---
 def sync_grus(w, l, gsm, action_type):
     k = st.session_state.form_key
     g = st.session_state.get(f"g_{k}", 0.0)
     pcs = int(round(g * 144))
     st.session_state[f"p_{k}"] = pcs
-    
-    calc_wt = get_calc_weight(w, l, gsm, pcs)
-    if action_type == "Purchased":
-        st.session_state[f"wt_{k}"] = calc_wt
-    else:
-        st.session_state[f"cw_{k}"] = calc_wt
+    if action_type == "Used":
+        st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
 
 def sync_pcs(w, l, gsm, action_type):
     k = st.session_state.form_key
     pcs = st.session_state.get(f"p_{k}", 0)
     st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
-    
-    calc_wt = get_calc_weight(w, l, gsm, pcs)
-    if action_type == "Purchased":
-        st.session_state[f"wt_{k}"] = calc_wt
-    else:
-        st.session_state[f"cw_{k}"] = calc_wt
+    if action_type == "Used":
+        st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
 
 def sync_weight(w, l, gsm, action_type):
     if action_type == "Used":
@@ -2279,13 +2271,6 @@ def fetch_all_data():
         for col in COLUMNS_HISTORY:
             if col not in history_df.columns:
                 history_df[col] = 0.0 if col in ["Grus", "Pcs", "Weight", "Challan Weight", "Diff Weight"] else ""
-        
-        # Rule: If Challan Weight <= 0 in main sheet, clear stock metrics to 0
-        if not master_df.empty:
-            master_df["Challan Weight"] = pd.to_numeric(master_df["Challan Weight"], errors="coerce").fillna(0.0)
-            zero_mask = master_df["Challan Weight"] <= 0
-            master_df.loc[zero_mask, ["Grus", "Pcs", "Challan Weight"]] = [0.0, 0, 0.0]
-
         return master_df[COLUMNS_MASTER], history_df[COLUMNS_HISTORY]
     except Exception:
         return pd.DataFrame(columns=COLUMNS_MASTER), pd.DataFrame(columns=COLUMNS_HISTORY)
@@ -2390,17 +2375,14 @@ with tab_entry:
         curr_pcs = int(pd.to_numeric(match["Pcs"]).sum()) if not match.empty else 0
         curr_cw = float(pd.to_numeric(match["Challan Weight"]).sum()) if not match.empty else 0.0
 
-        if curr_cw <= 0:
-            curr_grus, curr_pcs, curr_cw = 0.0, 0, 0.0
-
         st.info(f"**Current Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs | Challan Weight: {curr_cw:.3f} Kg")
 
         st.markdown("---")
         st.markdown("**📝 Entry Details**")
 
-        for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}", f"wt_{fk}"]:
+        for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}"]:
             if key not in st.session_state:
-                st.session_state[key] = 0.0 if "g" in key or "cw" in key or "wt" in key else 0
+                st.session_state[key] = 0.0 if "g" in key or "cw" in key else 0
 
         e1, e2, e3 = st.columns(3)
         with e1:
@@ -2411,11 +2393,13 @@ with tab_entry:
             cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g, action_type))
         
         wt_val = 0.0 
-        diff_weight_val = 0.0
+        diff_weight_change = 0.0
+
         if action_type == "Purchased":
-            wt_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_{fk}")
-            diff_weight_val = round(cw_val - wt_val, 3)
-            st.caption(f"Diff Weight (Challan Weight - Calculated Weight): **{diff_weight_val:.3f} Kg**")
+            wt_val = get_calc_weight(final_w, final_l, final_g, pcs_val)
+            st.number_input("Calculated Weight (Kg)", value=float(wt_val), disabled=True, format="%.3f", key=f"wt_{fk}")
+            diff_weight_change = cw_val - wt_val
+            st.caption(f"Diff Weight (Challan Weight - Calculated Weight): **{diff_weight_change:.3f} Kg**")
         
         remark = st.text_input("Remark", key=f"rm_{fk}")
 
@@ -2441,7 +2425,6 @@ with tab_entry:
                         new_grus = curr_grus + grus_val
                         new_pcs = curr_pcs + pcs_val
                         new_cw = curr_cw + cw_val
-                        diff_weight_change = diff_weight_val
                     else: 
                         new_grus = curr_grus - grus_val
                         new_pcs = curr_pcs - pcs_val
@@ -2451,10 +2434,9 @@ with tab_entry:
                             new_grus = 0.0
                             new_pcs = 0
                         else:
-                            diff_weight_change = 0.0
                             new_cw = curr_cw - cw_val
 
-                    # Rule: Reset stock values to zero if weight reaches 0 or below
+                    # Core Rule: If Challan Weight is <= 0, force everything to 0
                     if new_cw <= 0:
                         new_cw = 0.0
                         new_grus = 0.0
@@ -2464,10 +2446,10 @@ with tab_entry:
                         "action": "update_stock",
                         "date": txn_date.strftime("%d/%m/%Y"),
                         "type": action_type,
-                        "product": final_p,
-                        "width": final_w,
-                        "length": final_l,
-                        "gsm": final_g,
+                        "product": str(final_p).strip(),
+                        "width": str(final_w).strip(),
+                        "length": str(final_l).strip(),
+                        "gsm": str(final_g).strip(),
                         "grus_change": float(grus_val),
                         "pcs_change": int(pcs_val),
                         "weight_change": float(wt_val), 
