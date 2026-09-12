@@ -2232,20 +2232,20 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# Sync Callbacks (STRICTLY UNTOUCHED & ENABLED FOR 'USED' MODE ONLY)
+# --- Callbacks updated to calculate Pcs from Grus in BOTH modes ---
 def sync_grus(w, l, gsm, action_type):
+    k = st.session_state.form_key
+    g = st.session_state.get(f"g_{k}", 0.0)
+    pcs = int(round(g * 144))
+    st.session_state[f"p_{k}"] = pcs
     if action_type == "Used":
-        k = st.session_state.form_key
-        g = st.session_state.get(f"g_{k}", 0.0)
-        pcs = int(round(g * 144))
-        st.session_state[f"p_{k}"] = pcs
         st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
 
 def sync_pcs(w, l, gsm, action_type):
+    k = st.session_state.form_key
+    pcs = st.session_state.get(f"p_{k}", 0)
+    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
     if action_type == "Used":
-        k = st.session_state.form_key
-        pcs = st.session_state.get(f"p_{k}", 0)
-        st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
         st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
 
 def sync_weight(w, l, gsm, action_type):
@@ -2393,7 +2393,6 @@ with tab_entry:
         with e3:
             cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g, action_type))
         
-        # Calculation for Purchase Mode
         wt_val = get_calc_weight(final_w, final_l, final_g, pcs_val)
         diff_weight_calc = 0.0
 
@@ -2438,7 +2437,6 @@ with tab_entry:
                             final_diff_weight = 0.0
                             new_cw = curr_cw - cw_val
 
-                    # Rule: If Challan Weight becomes 0 or less, reset everything to 0
                     if new_cw <= 0:
                         new_cw = 0.0
                         new_grus = 0.0
