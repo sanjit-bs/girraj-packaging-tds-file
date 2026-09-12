@@ -2232,36 +2232,43 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# --- Auto-Sync Callbacks with Instant Rerun ---
-def sync_from_grus(w, l, gsm):
+# --- Callbacks for Purchased Mode ---
+def sync_grus_purchased(w, l, gsm):
     k = st.session_state.form_key
     g = st.session_state.get(f"g_{k}", 0.0)
     pcs = int(round(g * 144))
     calc_wt = get_calc_weight(w, l, gsm, pcs)
-    
     st.session_state[f"p_{k}"] = pcs
-    st.session_state[f"cw_{k}"] = calc_wt
     st.session_state[f"wt_{k}"] = calc_wt
 
-def sync_from_pcs(w, l, gsm):
+def sync_pcs_purchased(w, l, gsm):
     k = st.session_state.form_key
     pcs = st.session_state.get(f"p_{k}", 0)
     g = round(float(pcs) / 144.0, 2)
     calc_wt = get_calc_weight(w, l, gsm, pcs)
-    
     st.session_state[f"g_{k}"] = g
-    st.session_state[f"cw_{k}"] = calc_wt
     st.session_state[f"wt_{k}"] = calc_wt
 
-def sync_from_cw(w, l, gsm):
+# --- Callbacks for Used Mode (Untouched) ---
+def sync_grus_used(w, l, gsm):
+    k = st.session_state.form_key
+    g = st.session_state.get(f"g_{k}", 0.0)
+    pcs = int(round(g * 144))
+    st.session_state[f"p_{k}"] = pcs
+    st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
+
+def sync_pcs_used(w, l, gsm):
+    k = st.session_state.form_key
+    pcs = st.session_state.get(f"p_{k}", 0)
+    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
+    st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
+
+def sync_cw_used(w, l, gsm):
     k = st.session_state.form_key
     cw = st.session_state.get(f"cw_{k}", 0.0)
     pcs = get_calc_pcs(w, l, gsm, cw)
-    g = round(float(pcs) / 144.0, 2)
-    
     st.session_state[f"p_{k}"] = pcs
-    st.session_state[f"g_{k}"] = g
-    st.session_state[f"wt_{k}"] = cw
+    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
 
 @st.cache_data(ttl=5)
 def fetch_all_data():
@@ -2393,17 +2400,32 @@ with tab_entry:
         if f"cw_{fk}" not in st.session_state: st.session_state[f"cw_{fk}"] = 0.0
         if f"wt_{fk}" not in st.session_state: st.session_state[f"wt_{fk}"] = 0.0
 
-        e1, e2, e3 = st.columns(3)
-        with e1:
-            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_from_grus, args=(final_w, final_l, final_g))
-        with e2:
-            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_from_pcs, args=(final_w, final_l, final_g))
-        with e3:
-            cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_from_cw, args=(final_w, final_l, final_g))
-        
+        diff_weight_change = 0.0
+
         if action_type == "Purchased":
-            wt_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_{fk}")
+            e1, e2, e3 = st.columns(3)
+            with e1:
+                grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_grus_purchased, args=(final_w, final_l, final_g))
+            with e2:
+                pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_pcs_purchased, args=(final_w, final_l, final_g))
+            with e3:
+                cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}")
+
+            wt_val = st.number_input("Calculated Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"wt_{fk}", disabled=True)
+            
+            diff_weight_change = round(cw_val - wt_val, 3)
+            st.caption(f"Calculated Diff Weight (Challan Weight - Calculated Weight): **{diff_weight_change:.3f} Kg**")
+
         else:
+            # Used Mode (Untouched)
+            e1, e2, e3 = st.columns(3)
+            with e1:
+                grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_grus_used, args=(final_w, final_l, final_g))
+            with e2:
+                pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_pcs_used, args=(final_w, final_l, final_g))
+            with e3:
+                cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_cw_used, args=(final_w, final_l, final_g))
+            
             wt_val = 0.0
 
         remark = st.text_input("Remark", key=f"rm_{fk}")
@@ -2426,7 +2448,6 @@ with tab_entry:
                 st.error(f"Cannot subtract {cw_val:.3f} Kg. Available Challan stock is only {curr_cw:.3f} Kg.")
             else:
                 with st.spinner("Updating..."):
-                    diff_weight_change = 0.0
                     if action_type == "Purchased":
                         new_grus = curr_grus + grus_val
                         new_pcs = curr_pcs + pcs_val
@@ -2441,6 +2462,7 @@ with tab_entry:
                             new_pcs = 0
                         else:
                             new_cw = curr_cw - cw_val
+                            diff_weight_change = 0.0
 
                     params = {
                         "action": "update_stock",
