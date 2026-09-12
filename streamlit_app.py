@@ -2232,7 +2232,7 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# --- Callbacks updated to calculate Pcs from Grus in BOTH modes ---
+# Sync Callbacks (ONLY ACTIVE IN 'USED' MODE - PURCHASED IS UNTOUCHED)
 def sync_grus(w, l, gsm, action_type):
     k = st.session_state.form_key
     g = st.session_state.get(f"g_{k}", 0.0)
@@ -2288,9 +2288,7 @@ def send_update_to_sheet(params):
     except Exception as e:
         st.error(f"Transaction failed: {e}")
 
-# ======================================================
-# Main Application
-# ======================================================
+# Main Application Layout
 sheet_df, history_df = fetch_all_data()
 
 st.markdown("---")
@@ -2367,8 +2365,10 @@ with tab_entry:
 
     if final_p and final_w and final_l and final_g:
         match = df_clean[
-            (df_clean["Product"] == final_p) & (df_clean["Width"] == final_w) & 
-            (df_clean["Length"] == final_l) & (df_clean["GSM"] == final_g)
+            (df_clean["Product"].str.lower() == final_p.lower()) & 
+            (pd.to_numeric(df_clean["Width"], errors='coerce') == float(final_w)) & 
+            (pd.to_numeric(df_clean["Length"], errors='coerce') == float(final_l)) & 
+            (pd.to_numeric(df_clean["GSM"], errors='coerce') == float(final_g))
         ]
         
         is_existing_item = not match.empty
@@ -2391,6 +2391,7 @@ with tab_entry:
         with e2:
             pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_pcs, args=(final_w, final_l, final_g, action_type))
         with e3:
+            # Vacant Input Field in Purchased Mode
             cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g, action_type))
         
         wt_val = get_calc_weight(final_w, final_l, final_g, pcs_val)
@@ -2398,7 +2399,7 @@ with tab_entry:
 
         if action_type == "Purchased":
             diff_weight_calc = round(cw_val - wt_val, 3)
-            st.caption(f"Calculated Weight: **{wt_val:.3f} Kg** | Difference Weight (Challan - Calc): **{diff_weight_calc:.3f} Kg**")
+            st.caption(f"Calculated Weight: **{wt_val:.3f} Kg** | Diff Weight (Challan - Calculated): **{diff_weight_calc:.3f} Kg**")
         
         remark = st.text_input("Remark", key=f"rm_{fk}")
 
@@ -2437,6 +2438,7 @@ with tab_entry:
                             final_diff_weight = 0.0
                             new_cw = curr_cw - cw_val
 
+                    # If Challan Weight becomes 0 or less, reset everything to 0
                     if new_cw <= 0:
                         new_cw = 0.0
                         new_grus = 0.0
@@ -2458,7 +2460,6 @@ with tab_entry:
                         "new_grus": float(round(new_grus, 2)),
                         "new_pcs": int(new_pcs),
                         "new_challan_weight": float(round(new_cw, 3)),
-                        "is_existing_item": is_existing_item,
                         "remark": remark.strip(),
                     }
                     send_update_to_sheet(params)
