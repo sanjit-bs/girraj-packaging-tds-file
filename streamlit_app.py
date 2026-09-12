@@ -2191,8 +2191,6 @@ with tab_history:
 # ================================================================================================
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyNDd8Zybovl7rso9STNpyqmqxQRUZC80h_qo59UA03iGDYLiWmEJLnGqlG2KFWXPMT/exec"
 
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw9FA9ITHoiUxnMturLUshvNhx22uIAlCWIzDUQwDCzIRh52OGSUYd0Wsc97Ahj1oPp/exec"
-
 COLUMNS_MASTER = [
     "Product", "Width", "Length", "GSM", "Grus", "Pcs", "Challan Weight", "Remark"
 ]
