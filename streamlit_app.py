@@ -2232,20 +2232,20 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-# --- Callbacks: Syncs Grus/Pcs universally, but ONLY forces Challan Weight in "Used" ---
+# Sync Callbacks (STRICTLY UNTOUCHED & ENABLED FOR 'USED' MODE ONLY)
 def sync_grus(w, l, gsm, action_type):
-    k = st.session_state.form_key
-    g = st.session_state.get(f"g_{k}", 0.0)
-    pcs = int(round(g * 144))
-    st.session_state[f"p_{k}"] = pcs
     if action_type == "Used":
+        k = st.session_state.form_key
+        g = st.session_state.get(f"g_{k}", 0.0)
+        pcs = int(round(g * 144))
+        st.session_state[f"p_{k}"] = pcs
         st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
 
 def sync_pcs(w, l, gsm, action_type):
-    k = st.session_state.form_key
-    pcs = st.session_state.get(f"p_{k}", 0)
-    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
     if action_type == "Used":
+        k = st.session_state.form_key
+        pcs = st.session_state.get(f"p_{k}", 0)
+        st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
         st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
 
 def sync_weight(w, l, gsm, action_type):
@@ -2371,9 +2371,10 @@ with tab_entry:
             (df_clean["Length"] == final_l) & (df_clean["GSM"] == final_g)
         ]
         
-        curr_grus = float(pd.to_numeric(match["Grus"]).sum()) if not match.empty else 0.0
-        curr_pcs = int(pd.to_numeric(match["Pcs"]).sum()) if not match.empty else 0
-        curr_cw = float(pd.to_numeric(match["Challan Weight"]).sum()) if not match.empty else 0.0
+        is_existing_item = not match.empty
+        curr_grus = float(pd.to_numeric(match["Grus"]).sum()) if is_existing_item else 0.0
+        curr_pcs = int(pd.to_numeric(match["Pcs"]).sum()) if is_existing_item else 0
+        curr_cw = float(pd.to_numeric(match["Challan Weight"]).sum()) if is_existing_item else 0.0
 
         st.info(f"**Current Stock:** {curr_grus:.2f} Grus | {curr_pcs} Pcs | Challan Weight: {curr_cw:.3f} Kg")
 
@@ -2392,14 +2393,13 @@ with tab_entry:
         with e3:
             cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g, action_type))
         
-        wt_val = 0.0 
-        diff_weight_change = 0.0
+        # Calculation for Purchase Mode
+        wt_val = get_calc_weight(final_w, final_l, final_g, pcs_val)
+        diff_weight_calc = 0.0
 
         if action_type == "Purchased":
-            wt_val = get_calc_weight(final_w, final_l, final_g, pcs_val)
-            st.number_input("Calculated Weight (Kg)", value=float(wt_val), disabled=True, format="%.3f", key=f"wt_{fk}")
-            diff_weight_change = cw_val - wt_val
-            st.caption(f"Diff Weight (Challan Weight - Calculated Weight): **{diff_weight_change:.3f} Kg**")
+            diff_weight_calc = round(cw_val - wt_val, 3)
+            st.caption(f"Calculated Weight: **{wt_val:.3f} Kg** | Difference Weight (Challan - Calc): **{diff_weight_calc:.3f} Kg**")
         
         remark = st.text_input("Remark", key=f"rm_{fk}")
 
@@ -2425,18 +2425,20 @@ with tab_entry:
                         new_grus = curr_grus + grus_val
                         new_pcs = curr_pcs + pcs_val
                         new_cw = curr_cw + cw_val
+                        final_diff_weight = diff_weight_calc
                     else: 
                         new_grus = curr_grus - grus_val
                         new_pcs = curr_pcs - pcs_val
                         if adj_check:
-                            diff_weight_change = rem_wt
+                            final_diff_weight = rem_wt
                             new_cw = 0.0
                             new_grus = 0.0
                             new_pcs = 0
                         else:
+                            final_diff_weight = 0.0
                             new_cw = curr_cw - cw_val
 
-                    # Core Rule: If Challan Weight is <= 0, force everything to 0
+                    # Rule: If Challan Weight becomes 0 or less, reset everything to 0
                     if new_cw <= 0:
                         new_cw = 0.0
                         new_grus = 0.0
@@ -2446,18 +2448,19 @@ with tab_entry:
                         "action": "update_stock",
                         "date": txn_date.strftime("%d/%m/%Y"),
                         "type": action_type,
-                        "product": str(final_p).strip(),
-                        "width": str(final_w).strip(),
-                        "length": str(final_l).strip(),
-                        "gsm": str(final_g).strip(),
+                        "product": final_p,
+                        "width": final_w,
+                        "length": final_l,
+                        "gsm": final_g,
                         "grus_change": float(grus_val),
                         "pcs_change": int(pcs_val),
                         "weight_change": float(wt_val), 
                         "challan_weight_change": float(cw_val),
-                        "diff_weight_change": float(diff_weight_change),
+                        "diff_weight_change": float(final_diff_weight),
                         "new_grus": float(round(new_grus, 2)),
                         "new_pcs": int(new_pcs),
                         "new_challan_weight": float(round(new_cw, 3)),
+                        "is_existing_item": is_existing_item,
                         "remark": remark.strip(),
                     }
                     send_update_to_sheet(params)
