@@ -2232,28 +2232,31 @@ def get_calc_pcs(w, l, gsm, weight):
     except (ValueError, TypeError, ZeroDivisionError):
         return 0
 
-def sync_grus(w, l, gsm, action_type):
-    if action_type == "Used":
-        k = st.session_state.form_key
-        g = st.session_state.get(f"g_{k}", 0.0)
-        pcs = int(round(g * 144))
-        st.session_state[f"p_{k}"] = pcs
-        st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
+# Auto-Sync Callbacks (Now applies to both Purchased and Used)
+def sync_grus(w, l, gsm):
+    k = st.session_state.form_key
+    g = st.session_state.get(f"g_{k}", 0.0)
+    pcs = int(round(g * 144))
+    st.session_state[f"p_{k}"] = pcs
+    calc_wt = get_calc_weight(w, l, gsm, pcs)
+    st.session_state[f"cw_{k}"] = calc_wt
+    st.session_state[f"wt_{k}"] = calc_wt
 
-def sync_pcs(w, l, gsm, action_type):
-    if action_type == "Used":
-        k = st.session_state.form_key
-        pcs = st.session_state.get(f"p_{k}", 0)
-        st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
-        st.session_state[f"cw_{k}"] = get_calc_weight(w, l, gsm, pcs)
+def sync_pcs(w, l, gsm):
+    k = st.session_state.form_key
+    pcs = st.session_state.get(f"p_{k}", 0)
+    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
+    calc_wt = get_calc_weight(w, l, gsm, pcs)
+    st.session_state[f"cw_{k}"] = calc_wt
+    st.session_state[f"wt_{k}"] = calc_wt
 
-def sync_weight(w, l, gsm, action_type):
-    if action_type == "Used":
-        k = st.session_state.form_key
-        wt = st.session_state.get(f"cw_{k}", 0.0)
-        pcs = get_calc_pcs(w, l, gsm, wt)
-        st.session_state[f"p_{k}"] = pcs
-        st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
+def sync_weight(w, l, gsm):
+    k = st.session_state.form_key
+    wt = st.session_state.get(f"cw_{k}", 0.0)
+    pcs = get_calc_pcs(w, l, gsm, wt)
+    st.session_state[f"p_{k}"] = pcs
+    st.session_state[f"g_{k}"] = round(float(pcs) / 144.0, 2)
+    st.session_state[f"wt_{k}"] = wt
 
 @st.cache_data(ttl=5)
 def fetch_all_data():
@@ -2316,7 +2319,6 @@ with tab_entry:
     for c in ["Product", "Width", "Length", "GSM"]:
         df_clean[c] = df_clean[c].astype(str).str.strip()
     
-    # Helper to get valid selection states
     def get_sel(key):
         v = st.session_state.get(key, "")
         return v if v and not v.startswith("Select") and v != "➕ Add New..." else None
@@ -2326,7 +2328,6 @@ with tab_entry:
     cl = get_sel(f"sl_{fk}")
     cg = get_sel(f"sg_{fk}")
 
-    # Generate cross-filtered options
     def get_opts(col):
         t = df_clean.copy()
         if col != "Product" and cp: t = t[t["Product"] == cp]
@@ -2340,7 +2341,6 @@ with tab_entry:
     al = get_opts("Length")
     ag = get_opts("GSM")
 
-    # Auto-fill session state if only 1 valid option remains
     if len(ap) == 1 and not cp: st.session_state[f"sp_{fk}"] = ap[0]
     if len(aw) == 1 and not cw: st.session_state[f"sw_{fk}"] = aw[0]
     if len(al) == 1 and not cl: st.session_state[f"sl_{fk}"] = al[0]
@@ -2382,17 +2382,18 @@ with tab_entry:
         st.markdown("---")
         st.markdown("**📝 Entry Details**")
 
-        for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}"]:
+        # Initialize all entry fields into session state prior to rendering
+        for key in [f"g_{fk}", f"p_{fk}", f"cw_{fk}", f"wt_{fk}"]:
             if key not in st.session_state:
-                st.session_state[key] = 0.0 if "g" in key or "cw" in key else 0
+                st.session_state[key] = 0.0 if "g" in key or "cw" in key or "wt" in key else 0
 
         e1, e2, e3 = st.columns(3)
         with e1:
-            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_grus, args=(final_w, final_l, final_g, action_type))
+            grus_val = st.number_input("Grus", min_value=0.0, step=0.1, format="%.2f", key=f"g_{fk}", on_change=sync_grus, args=(final_w, final_l, final_g))
         with e2:
-            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_pcs, args=(final_w, final_l, final_g, action_type))
+            pcs_val = st.number_input("Pcs (Grus × 144)", min_value=0, step=1, key=f"p_{fk}", on_change=sync_pcs, args=(final_w, final_l, final_g))
         with e3:
-            cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g, action_type))
+            cw_val = st.number_input("Challan Weight (Kg)", min_value=0.0, step=0.001, format="%.3f", key=f"cw_{fk}", on_change=sync_weight, args=(final_w, final_l, final_g))
         
         wt_val = 0.0 
         if action_type == "Purchased":
@@ -2462,7 +2463,7 @@ with tab_history:
     st.markdown("---")
     st.markdown("**📜 Transaction History**")
     st.dataframe(history_df, use_container_width=True, hide_index=True)
-
+    
 # ==========================================
 ################################## Purchase Order & Verification System #########################################
 # ==========================================
