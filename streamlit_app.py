@@ -2504,6 +2504,11 @@ else:
 #     st.markdown("**📜 Transaction History**")
 #     st.dataframe(history_df, use_container_width=True, hide_index=True)
 
+#################### ----------------Production Stock & Rill Stock Manager------------------------ #########################
+st.markdown("---")
+st.subheader("📄 Production Stock & Rill Stock Manager")
+st.markdown("[Production Stock & Rill Stock Manager App](https://making-cost-rill-stock-app.streamlit.app)")
+
 #################### ----------------Paper Sheet Stock Manager------------------------ #########################
 st.markdown("---")
 st.subheader("📄 Paper Sheet Stock Manager")
