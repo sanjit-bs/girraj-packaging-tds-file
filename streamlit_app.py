@@ -2503,6 +2503,11 @@ else:
 #     st.markdown("---")
 #     st.markdown("**📜 Transaction History**")
 #     st.dataframe(history_df, use_container_width=True, hide_index=True)
+
+#################### ----------------Paper Sheet Stock Manager------------------------ #########################
+st.markdown("---")
+st.subheader("📄 Paper Sheet Stock Manager")
+st.markdown("[Paper Sheet Stock Manager App](https://girraj-shivam-duplex-app-o38bcfp0ulj.streamlit.app)")
     
 #################### ---------------- Quality Test Report Generator ------------------------ #########################
 st.markdown("---")
