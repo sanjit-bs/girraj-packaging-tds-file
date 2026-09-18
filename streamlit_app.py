@@ -2504,6 +2504,11 @@ else:
 #     st.markdown("**📜 Transaction History**")
 #     st.dataframe(history_df, use_container_width=True, hide_index=True)
 
+#################### ----------------Purchase Order & Verification System------------------------- #########################
+st.markdown("---")
+st.subheader("📄 Purchase Order & Verification System")
+st.markdown("[Purchase Order & Verification System](https://shivam-girrag-po-app-sktjwrhte2s.streamlit.app)")
+
 #################### ----------------Production Stock & Rill Stock Manager------------------------ #########################
 st.markdown("---")
 st.subheader("📄 Production Stock & Rill Stock Manager")
