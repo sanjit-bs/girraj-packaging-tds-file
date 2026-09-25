@@ -2528,3 +2528,8 @@ st.markdown("[Quality Test Report Generator App](https://idyllic-unicorn-9a9402.
 st.markdown("---")
 st.subheader("Tax Invoice Generator")
 st.markdown("[Tax Invoice Generator App](https://lively-parfait-437225.netlify.app)")
+
+#################### ---------------- Carton Box Cost Calculator ---------------------------#################
+st.markdown("---")
+st.subheader("Carton Box Cost Calculato")
+st.markdown("[Carton Box Cost Calculato App](https://nimble-conkies-8f0b18.netlify.app)")
