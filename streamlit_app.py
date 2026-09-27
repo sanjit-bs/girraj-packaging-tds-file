@@ -2532,3 +2532,8 @@ st.markdown("[Tax Invoice Generator App](https://lively-parfait-437225.netlify.a
 st.markdown("---")
 st.subheader("Carton Box Cost Calculato")
 st.markdown("[Carton Box Cost Calculato App](https://nimble-conkies-8f0b18.netlify.app)")
+
+#################### ------------------- ⭐Paper Sheet Stock Manager Pro⭐-----------------######################
+st.markdown("---")
+st.subheader("⭐Paper Sheet Stock Manager Pro⭐")
+st.markdown("[⭐Paper Sheet Stock Manager Pro⭐ App](https://paper-sheet-stock-manager-pro-app-nxpye3ifupi.streamlit.app/)")
