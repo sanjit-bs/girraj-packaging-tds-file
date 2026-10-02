@@ -433,7 +433,7 @@ COMPANY_OPTIONS = [
     "Agarwal Food Product (Sankrail)",
     "Pamir Ice Cream (Raiganj)",
     "Top notch (Gaighata)",
-    "Cold Roll (Gaighata)",
+    "Mashakti Food Products LTD (Gaighata)",
 ]
 
 VEHICLE_MASTER = {
