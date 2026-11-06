@@ -401,7 +401,6 @@ st.download_button(
 WORKSHEET_NAME2 = "Delivery_Record"
 WORKSHEET_NAME3 = "Inv_Value"
 
-# Added 'Invoice Link' right after 'Remark' (Column 9)
 COLUMNS2 = [
     "Date",
     "Vehicle No.",
@@ -451,15 +450,7 @@ VEHICLE_MASTER = {
     "Others": {"driver": "", "owner": ""},
 }
 
-SCOPES = [
-    "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
-]
 
-
-# ======================================================
-# Cached Database & Drive Connectors
-# ======================================================
 @st.cache_resource(ttl=3600)
 def connect_delivery_sheet():
     creds = Credentials.from_service_account_info(
@@ -486,12 +477,20 @@ def get_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-delivery_sheet = connect_delivery_sheet()
-inv_value_sheet = connect_invoice_value_sheet()
+def fetch_all_stock_data():
+    try:
+        res = requests.get(f"{WEB_APP_URL}?action=read_all")
+        if res.status_code == 200:
+            return res.json()
+    except Exception as e:
+        st.error(f"Error connecting to Apps Script: {e}")
+    return None
 
+
+stock_data = fetch_all_stock_data()
 
 # ======================================================
-# Google Drive Folder & File Upload Helper Logic
+# Google Drive Helper Functions
 # ======================================================
 def get_or_create_drive_folder(service, folder_name, parent_id=None):
     query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
@@ -510,28 +509,30 @@ def get_or_create_drive_folder(service, folder_name, parent_id=None):
         }
         if parent_id:
             folder_metadata["parents"] = [parent_id]
-        folder = (
-            service.files().create(body=folder_metadata, fields="id").execute()
-        )
+        folder = service.files().create(body=folder_metadata, fields="id").execute()
         return folder.get("id")
 
 
-def upload_scan_to_drive(file_bytes, file_name, mime_type, company_name):
+def upload_scan_to_drive(file_input, file_name, mime_type, company_name):
     service = get_drive_service()
 
-    # 1. Root folder: receive invoice
     root_folder_id = get_or_create_drive_folder(service, "receive invoice")
-
-    # 2. Company Subfolder
     clean_company = company_name.strip()
     company_folder_id = get_or_create_drive_folder(
         service, clean_company, parent_id=root_folder_id
     )
 
-    # 3. Upload File
-    media = MediaIoBaseUpload(
-        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
-    )
+    if isinstance(file_input, bytes):
+        stream = io.BytesIO(file_input)
+    elif hasattr(file_input, "getvalue"):
+        stream = io.BytesIO(file_input.getvalue())
+    elif hasattr(file_input, "read"):
+        file_input.seek(0)
+        stream = file_input
+    else:
+        stream = io.BytesIO(file_input)
+
+    media = MediaIoBaseUpload(stream, mimetype=mime_type, resumable=True)
     file_metadata = {"name": file_name, "parents": [company_folder_id]}
     file = (
         service.files()
@@ -539,12 +540,9 @@ def upload_scan_to_drive(file_bytes, file_name, mime_type, company_name):
         .execute()
     )
 
-    # 4. Set Permission so link is accessible
     try:
         permission = {"type": "anyone", "role": "reader"}
-        service.permissions().create(
-            fileId=file.get("id"), body=permission
-        ).execute()
+        service.permissions().create(fileId=file.get("id"), body=permission).execute()
     except Exception:
         pass
 
@@ -552,61 +550,43 @@ def upload_scan_to_drive(file_bytes, file_name, mime_type, company_name):
 
 
 # ======================================================
-# Data Loaders
+# Data Loaders & Invoice Auto-Increment Logic
 # ======================================================
 def load_delivery_data():
-    raw_data = delivery_sheet.get_all_values()
-    if not raw_data or len(raw_data) < 2:
+    try:
+        delivery_sheet = connect_delivery_sheet()
+        raw_data = delivery_sheet.get_all_values()
+        if not raw_data or len(raw_data) < 2:
+            return pd.DataFrame(columns=COLUMNS2)
+
+        headers = [str(h).strip() for h in raw_data[0]]
+        df = pd.DataFrame(raw_data[1:], columns=headers)
+
+        for col in COLUMNS2:
+            if col not in df.columns:
+                df[col] = ""
+
+        df = df[COLUMNS2].copy()
+        df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce")
+        text_cols = [
+            "Vehicle No.",
+            "Invoice No.",
+            "Driver",
+            "Owner",
+            "Company & Location",
+            "Invoice Received",
+            "Remark",
+            "Invoice Link",
+        ]
+        for col in text_cols:
+            df[col] = df[col].astype(str).str.strip()
+
+        return df
+    except Exception as e:
+        st.error(f"Error loading delivery sheet: {e}")
         return pd.DataFrame(columns=COLUMNS2)
 
-    headers = [str(h).strip() for h in raw_data[0]]
-    df = pd.DataFrame(raw_data[1:], columns=headers)
 
-    for col in COLUMNS2:
-        if col not in df.columns:
-            df[col] = ""
-
-    df = df[COLUMNS2].copy()
-    df["Date"] = pd.to_datetime(df["Date"], format="%d/%m/%Y", errors="coerce")
-    text_cols = [
-        "Vehicle No.",
-        "Invoice No.",
-        "Driver",
-        "Owner",
-        "Company & Location",
-        "Invoice Received",
-        "Remark",
-        "Invoice Link",
-    ]
-    for col in text_cols:
-        df[col] = df[col].astype(str).str.strip()
-
-    return df
-
-
-def load_invoice_value_data():
-    raw_data = inv_value_sheet.get_all_values()
-    if not raw_data or len(raw_data) < 2:
-        return pd.DataFrame(columns=COLUMNS3)
-
-    headers = [str(h).strip() for h in raw_data[0]]
-    df = pd.DataFrame(raw_data[1:], columns=headers)
-
-    for col in COLUMNS3:
-        if col not in df.columns:
-            df[col] = 0.0 if "Value" in col or "GST" in col else ""
-
-    df = df[COLUMNS3].copy()
-    return df
-
-
-delivery_df = load_delivery_data()
-inv_value_df = load_invoice_value_data()
-
-
-# ======================================================
-# Auto-Increment Sequence Logic
-# ======================================================
 def get_financial_year(target_date=None):
     if target_date is None:
         target_date = date.today()
@@ -639,20 +619,14 @@ def get_next_invoice_number(df, target_date=None):
         next_num_str = str(next_num).zfill(len(num_part))
         return f"GP/{next_num_str}/{fy}"
 
-    match_any = re.search(r"(\d+)", last_invoice)
-    if match_any:
-        num_part = match_any.group(1)
-        next_num = int(num_part) + 1
-        next_num_str = str(next_num).zfill(len(num_part))
-        return f"GP/{next_num_str}/{fy}"
-
     return f"GP/1/{fy}"
 
 
+delivery_df = load_delivery_data()
 suggested_next_invoice = get_next_invoice_number(delivery_df)
 
 # ======================================================
-# Runtime Session States
+# Session State Initializations
 # ======================================================
 if "submit_success" not in st.session_state:
     st.session_state.submit_success = False
@@ -671,262 +645,637 @@ if st.session_state.submit_success:
     st.success("✅ Log Entry Appended Successfully")
     st.session_state.submit_success = False
 
-
-def update_vehicle_details():
-    sel = st.session_state[f"v_sel_{st.session_state.form_key}"]
-    st.session_state.current_driver = VEHICLE_MASTER[sel]["driver"]
-    st.session_state.current_owner = VEHICLE_MASTER[sel]["owner"]
-    key_suffix = st.session_state.form_key
-    st.session_state[f"driver_field_{key_suffix}"] = VEHICLE_MASTER[sel][
-        "driver"
-    ]
-    st.session_state[f"owner_field_{key_suffix}"] = VEHICLE_MASTER[sel]["owner"]
-
-
 # ======================================================
-# Tab Layout Organization
+# Stock Cascading Selector Helper Functions
 # ======================================================
-tab1, tab2 = st.tabs(["🚚 Delivery Record", "💰 Invoice Value Record"])
+def safe_float(val):
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return None
 
-with tab1:
-    st.subheader("New Delivery Entry")
-    key_suffix = st.session_state.form_key
 
-    col1, col2 = st.columns(2)
-    with col1:
-        vehicle_selection = st.selectbox(
-            "Vehicle No. *",
-            options=list(VEHICLE_MASTER.keys()),
-            key=f"v_sel_{key_suffix}",
-            on_change=update_vehicle_details,
-        )
-        final_vehicle_no = (
-            st.text_input(
-                "Manual Vehicle No. *", key=f"v_manual_{key_suffix}"
-            )
-            if vehicle_selection == "Others"
-            else vehicle_selection
-        )
-    with col2:
-        invoice_no = st.text_input(
-            "Invoice Number *",
-            value=st.session_state.current_invoice,
-            key=f"delivery_entry_invoice_field_{key_suffix}",
-        )
+def render_cascading_stock_selector(df_stock, key_prefix):
+    st.subheader("🔍 Product & Specifications Selection")
+    
+    df = df_stock.copy() if not df_stock.empty else pd.DataFrame(columns=['Product', 'Width', 'Length', 'GSM', 'Grus', 'Pcs', 'Challan Weight'])
+    
+    if not df.empty:
+        df['Product'] = df['Product'].astype(str)
+        df['Width'] = pd.to_numeric(df['Width'], errors='coerce')
+        df['Length'] = pd.to_numeric(df['Length'], errors='coerce')
+        df['GSM'] = pd.to_numeric(df['GSM'], errors='coerce')
 
-    col3, col4 = st.columns(2)
-    with col3:
-        driver_name = st.text_input(
-            "Driver",
-            value=st.session_state.current_driver,
-            key=f"driver_field_{key_suffix}",
-        )
-    with col4:
-        owner_name = st.text_input(
-            "Owner",
-            value=st.session_state.current_owner,
-            key=f"owner_field_{key_suffix}",
-        )
+    curr_prod = st.session_state.get(f"{key_prefix}_prod", "Select...")
+    curr_w = st.session_state.get(f"{key_prefix}_w", "Select...")
+    curr_l = st.session_state.get(f"{key_prefix}_l", "Select...")
 
-    company = st.selectbox(
-        "Company & Location *",
-        options=COMPANY_OPTIONS,
-        key=f"delivery_company_{key_suffix}",
-    )
-    remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
-    delivery_date = st.date_input(
-        "Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}"
-    )
+    # 1. Product options
+    avail_prods = ["Select..."] + sorted(df['Product'].dropna().unique().tolist()) + ["➕ Add New"] if not df.empty else ["Select...", "➕ Add New"]
 
-    if st.button("Submit Delivery Log", type="primary"):
-        if vehicle_selection == "Select":
-            st.warning("Please select a Vehicle Number.")
-        elif final_vehicle_no.strip() == "":
-            st.warning("Please enter the Manual Vehicle Number.")
-        elif invoice_no.strip() == "":
-            st.warning("Please enter Invoice Number.")
-        elif company == "Select":
-            st.warning("Please choose a valid Company.")
+    # 2. Width options
+    df_for_w = df[df['Product'] == curr_prod] if curr_prod not in ["Select...", "➕ Add New", ""] else df
+    w_list = [str(w) for w in sorted(df_for_w['Width'].dropna().unique().tolist())]
+    avail_widths = ["Select..."] + w_list + ["➕ Add New"] if not df_for_w.empty else ["Select...", "➕ Add New"]
+    
+    if len(w_list) == 1 and curr_w not in w_list and curr_w != "➕ Add New":
+        st.session_state[f"{key_prefix}_w"] = w_list[0]
+        curr_w = w_list[0]
+
+    # 3. Length options
+    df_for_l = df_for_w.copy()
+    if safe_float(curr_w) is not None:
+        df_for_l = df_for_l[df_for_l['Width'] == safe_float(curr_w)]
+    l_list = [str(l) for l in sorted(df_for_l['Length'].dropna().unique().tolist())]
+    avail_lengths = ["Select..."] + l_list + ["➕ Add New"] if not df_for_l.empty else ["Select...", "➕ Add New"]
+    
+    if len(l_list) == 1 and curr_l not in l_list and curr_l != "➕ Add New":
+        st.session_state[f"{key_prefix}_l"] = l_list[0]
+        curr_l = l_list[0]
+
+    # 4. GSM options
+    df_for_g = df_for_l.copy()
+    if safe_float(curr_l) is not None:
+        df_for_g = df_for_g[df_for_g['Length'] == safe_float(curr_l)]
+    g_list = [str(g) for g in sorted(df_for_g['GSM'].dropna().unique().tolist())]
+    avail_gsms = ["Select..."] + g_list + ["➕ Add New"] if not df_for_g.empty else ["Select...", "➕ Add New"]
+    
+    curr_g = st.session_state.get(f"{key_prefix}_gsm", "Select...")
+    if len(g_list) == 1 and curr_g not in g_list and curr_g != "➕ Add New":
+        st.session_state[f"{key_prefix}_gsm"] = g_list[0]
+
+    col_p, col_w, col_l, col_g = st.columns(4)
+    final_prod, final_w, final_l, final_g = None, None, None, None
+
+    with col_p:
+        sel_prod = st.selectbox("Product", avail_prods, key=f"{key_prefix}_prod")
+        if sel_prod == "➕ Add New":
+            final_prod = st.text_input("Enter New Product Name", value="", placeholder="e.g. Maplitho", key=f"{key_prefix}_custom_prod").strip()
+        elif sel_prod not in ["Select...", ""]:
+            final_prod = sel_prod
+
+    with col_w:
+        sel_w = st.selectbox("Width", avail_widths, key=f"{key_prefix}_w")
+        if sel_w == "➕ Add New":
+            final_w = st.number_input("Enter New Width", min_value=0.0, value=None, placeholder="e.g. 20.0", step=0.1, key=f"{key_prefix}_custom_w")
         else:
-            # 11-column alignment matching COLUMNS2 (including empty Invoice Link)
-            delivery_sheet.append_row([
-                delivery_date.strftime("%d/%m/%Y"),
-                final_vehicle_no.strip().upper(),
-                invoice_no.strip(),
-                driver_name.strip(),
-                owner_name.strip(),
-                company.strip(),
-                "No",
-                remark.strip(),
-                "",  # Col 9: Invoice Link (populated upon receive)
-                0.0,
-                0.0,
-            ])
-            st.cache_data.clear()
-            fresh_df = load_delivery_data()
-            st.session_state.current_driver = ""
-            st.session_state.current_owner = ""
-            st.session_state.current_invoice = get_next_invoice_number(
-                fresh_df, delivery_date
-            )
-            st.session_state.submit_success = True
-            st.session_state.form_key += 1
-            st.rerun()
+            final_w = safe_float(sel_w)
 
-with tab2:
-    st.subheader("Invoice Value Calculations (Inv_Value)")
-    key_suffix_fin = st.session_state.form_key
-
-    col_f1, col_f2 = st.columns(2)
-    with col_f1:
-        fin_invoice_no = st.text_input(
-            "Invoice Number *",
-            value=st.session_state.current_invoice,
-            key=f"fin_invoice_field_{key_suffix_fin}",
-        )
-    with col_f2:
-        fin_company = st.selectbox(
-            "Company *",
-            options=COMPANY_OPTIONS,
-            key=f"fin_company_{key_suffix_fin}",
-        )
-
-    fin_date = st.date_input(
-        "Invoice Date",
-        value=date.today(),
-        key=f"fin_date_{key_suffix_fin}",
-    )
-
-    col_tax, col_round = st.columns(2)
-    with col_tax:
-        taxable_value = st.number_input(
-            "Enter Taxable Value *",
-            min_value=0.0,
-            value=0.0,
-            step=100.0,
-            format="%.2f",
-            key=f"fin_taxable_{key_suffix_fin}",
-        )
-    with col_round:
-        round_off = st.number_input(
-            "Round Up/Off (+/-)",
-            value=0.0,
-            step=0.01,
-            format="%.2f",
-            key=f"fin_round_{key_suffix_fin}",
-        )
-
-    sgst_raw = taxable_value * 0.025
-    cgst_raw = taxable_value * 0.025
-    sgst_val = round(sgst_raw, 2)
-    cgst_val = round(cgst_raw, 2)
-    total_gst = sgst_val + cgst_val
-    total_value = round(taxable_value + total_gst + round_off, 2)
-
-    st.markdown("### 📊 Live Tax Calculation Breakdown")
-    c_m1, c_m2, c_m3 = st.columns(3)
-    c_m1.metric("SGST (2.5%)", f"₹ {sgst_val:,.2f}")
-    c_m2.metric("CGST (2.5%)", f"₹ {cgst_val:,.2f}")
-    c_m3.metric("Total GST (5%)", f"₹ {total_gst:,.2f}")
-
-    st.metric(
-        "📦 Final Total Value (Taxable + GST + Round Off)",
-        f"₹ {total_value:,.2f}",
-    )
-
-    if st.button("Submit Financial Value Log", type="primary"):
-        if fin_company == "Select":
-            st.warning("Please choose a valid Company.")
-        elif taxable_value <= 0.0:
-            st.warning("Taxable Value must be greater than zero.")
-        elif fin_invoice_no.strip() == "":
-            st.warning("Please ensure Invoice Number is not empty.")
+    with col_l:
+        sel_l = st.selectbox("Length", avail_lengths, key=f"{key_prefix}_l")
+        if sel_l == "➕ Add New":
+            final_l = st.number_input("Enter New Length", min_value=0.0, value=None, placeholder="e.g. 30.0", step=0.1, key=f"{key_prefix}_custom_l")
         else:
-            inv_value_sheet.append_row([
-                fin_date.strftime("%d/%m/%Y"),
-                fin_company.strip(),
-                fin_invoice_no.strip(),
-                round(taxable_value, 2),
-                round(sgst_val, 2),
-                round(cgst_val, 2),
-                round(total_gst, 2),
-                round(round_off, 2),
-                round(total_value, 2),
-            ])
-            st.cache_data.clear()
-            fresh_df = load_delivery_data()
-            st.session_state.current_invoice = get_next_invoice_number(
-                fresh_df, fin_date
-            )
-            st.session_state.submit_success = True
-            st.session_state.form_key += 1
-            st.rerun()
+            final_l = safe_float(sel_l)
 
-# ======================================================
-# UI Section: Pending Deliveries Management & Upload Modal
-# ======================================================
-st.markdown("---")
-st.subheader("📋 Pending Deliveries (Not Received)")
-pending_df = delivery_df[
-    delivery_df["Invoice Received"].str.strip().str.lower() == "no"
-]
+    with col_g:
+        sel_g = st.selectbox("GSM", avail_gsms, key=f"{key_prefix}_gsm")
+        if sel_g == "➕ Add New":
+            final_g = st.number_input("Enter New GSM", min_value=0.0, value=None, placeholder="e.g. 70.0", step=1.0, key=f"{key_prefix}_custom_g")
+        else:
+            final_g = safe_float(sel_g)
 
-if pending_df.empty:
-    st.info("🎉 All deliveries have been successfully received!")
-else:
-    col_h1, col_h2, col_h3, col_h4, col_h5, col_h6 = st.columns(
-        [1.2, 1.5, 1.5, 1.5, 2.5, 1]
-    )
-    with col_h1:
-        st.markdown("**Date**")
-    with col_h2:
-        st.markdown("**Invoice No.**")
-    with col_h3:
-        st.markdown("**Vehicle No.**")
-    with col_h4:
-        st.markdown("**Driver**")
-    with col_h5:
-        st.markdown("**Company & Location**")
-    with col_h6:
-        st.markdown("**Action**")
-    st.markdown("---")
+    filtered_df = df.copy()
+    if final_prod:
+        filtered_df = filtered_df[filtered_df['Product'] == final_prod]
+    if final_w is not None:
+        filtered_df = filtered_df[filtered_df['Width'] == final_w]
+    if final_l is not None:
+        filtered_df = filtered_df[filtered_df['Length'] == final_l]
+    if final_g is not None:
+        filtered_df = filtered_df[filtered_df['GSM'] == final_g]
 
-    for idx, row in pending_df.iterrows():
-        gs_row = idx + 2
-        col_date, col_inv, col_veh, col_driver, col_comp, col_act = st.columns(
-            [1.2, 1.5, 1.5, 1.5, 2.5, 1]
+    if len(filtered_df) == 1 and not filtered_df.empty:
+        selected_row = filtered_df.iloc[0]
+        st.success(
+            f"**Selected Existing Stock Balance:** Gross/Grus: `{selected_row['Grus']}` | "
+            f"Pcs: `{selected_row['Pcs']}` | Challan Weight: `{selected_row['Challan Weight']} kg`"
         )
+        return {"status": "existing", "data": selected_row}
 
-        with col_date:
-            if isinstance(row["Date"], pd.Timestamp) or hasattr(
-                row["Date"], "strftime"
-            ):
-                st.write(row["Date"].strftime("%d/%m/%Y"))
+    elif final_prod and final_w is not None and final_l is not None and final_g is not None:
+        st.info("✨ **New Specification Combination Ready!** Enter quantity details below.")
+        return {
+            "status": "new",
+            "Product": final_prod,
+            "Width": final_w,
+            "Length": final_l,
+            "GSM": final_g
+        }
+    
+    elif len(filtered_df) > 1:
+        st.info(f"💡 {len(filtered_df)} variants match your selection. Refine dropdowns to narrow down.")
+        return None
+    
+    else:
+        st.info("Please select or enter all 4 specifications (Product, Width, Length, GSM) to proceed.")
+        return None
+
+
+# ======================================================
+# Main Navigation Layout Tabs
+# ======================================================
+main_tab1, main_tab2, main_tab3, main_tab4, main_tab5 = st.tabs([
+    "📊 Stock Overview", 
+    "➕ Purchase Primary Stock", 
+    "🚚 Transfer Stock to Company",
+    "📝 Company Stock Usage",
+    "🚛 Transport & Deliveries"
+])
+
+# -------------------------------------------------------------------
+# TAB 1: VIEW STOCKS & HISTORIES
+# -------------------------------------------------------------------
+with main_tab1:
+    st.header("Stock Overview")
+    if st.button("🔄 Refresh Stock Data"):
+        st.rerun()
+
+    if stock_data and stock_data.get("status") == "success":
+        sub_tab1, sub_tab2, sub_tab3 = st.tabs(["Primary Warehouse", "Shivam Enterprise", "Girraj Packaging"])
+
+        with sub_tab1:
+            st.subheader("Primary Stock")
+            st.dataframe(pd.DataFrame(stock_data.get("primary_stock", [])), use_container_width=True)
+            st.subheader("Primary History (Transfers Out)")
+            st.dataframe(pd.DataFrame(stock_data.get("primary_history", [])), use_container_width=True)
+
+        with sub_tab2:
+            st.subheader("Shivam Enterprise Stock")
+            st.dataframe(pd.DataFrame(stock_data.get("stock_shivam", [])), use_container_width=True)
+            st.subheader("Shivam Enterprise History")
+            st.dataframe(pd.DataFrame(stock_data.get("history_shivam", [])), use_container_width=True)
+
+        with sub_tab3:
+            st.subheader("Girraj Packaging Stock")
+            st.dataframe(pd.DataFrame(stock_data.get("stock_girraj", [])), use_container_width=True)
+            st.subheader("Girraj Packaging History")
+            st.dataframe(pd.DataFrame(stock_data.get("history_girraj", [])), use_container_width=True)
+
+# -------------------------------------------------------------------
+# TAB 2: PURCHASE PRIMARY STOCK
+# -------------------------------------------------------------------
+with main_tab2:
+    st.header("Add Purchase Stock to Primary Warehouse")
+
+    df_p_stock = pd.DataFrame(stock_data.get("primary_stock", [])) if stock_data else pd.DataFrame()
+    selection_res = render_cascading_stock_selector(df_p_stock, key_prefix="pur")
+
+    if selection_res is not None:
+        if selection_res["status"] == "existing":
+            product = selection_res["data"]["Product"]
+            width = float(selection_res["data"]["Width"])
+            length = float(selection_res["data"]["Length"])
+            gsm = float(selection_res["data"]["GSM"])
+        else:
+            product = selection_res["Product"]
+            width = selection_res["Width"]
+            length = selection_res["Length"]
+            gsm = selection_res["GSM"]
+
+        st.divider()
+
+        col1, col2 = st.columns(2)
+        with col1:
+            entry_date = st.date_input("Purchase Date", datetime.now(), key="pur_date")
+            remark = st.text_input("Remark", value="", placeholder="Supplier details / Lot notes", key="pur_rem")
+
+        with col2:
+            calc_mode = st.radio("Entry Based On:", ["Enter Pieces (Pcs)", "Enter Gross (144 pcs)", "Enter Ream (500 pcs)", "Enter Weight (kg)"], horizontal=True, key="pur_mode")
+
+            if calc_mode == "Enter Pieces (Pcs)":
+                input_pcs = st.number_input("Pcs", min_value=0, value=None, placeholder="Enter Pcs...", step=1, key="pur_pcs")
+                if input_pcs:
+                    calc_grus = input_pcs / 144.0
+                    calc_weight = (width * length * gsm * input_pcs) / 1550000.0
+                    st.info(f"💡 Calculated Gross: `{calc_grus:.2f}` | Calculated Weight: `{calc_weight:.3f} kg`")
+                    challan_wt = st.number_input("Challan Weight (kg)", min_value=0.0, value=float(calc_weight), step=0.001, key="pur_cw")
+                    diff_wt = challan_wt - calc_weight
+                    pcs, grus, actual_wt = input_pcs, calc_grus, calc_weight
+                else:
+                    pcs = grus = actual_wt = challan_wt = diff_wt = 0.0
+
+            elif calc_mode == "Enter Gross (144 pcs)":
+                input_grus = st.number_input("Gross", min_value=0.0, value=None, placeholder="Enter Gross...", step=0.01, key="pur_grus")
+                if input_grus:
+                    calc_pcs = int(round(input_grus * 144))
+                    calc_weight = (width * length * gsm * calc_pcs) / 1550000.0
+                    st.info(f"💡 Calculated Pcs: `{calc_pcs}` | Calculated Weight: `{calc_weight:.3f} kg`")
+                    challan_wt = st.number_input("Challan Weight (kg)", min_value=0.0, value=float(calc_weight), step=0.001, key="pur_cw")
+                    diff_wt = challan_wt - calc_weight
+                    pcs, grus, actual_wt = calc_pcs, input_grus, calc_weight
+                else:
+                    pcs = grus = actual_wt = challan_wt = diff_wt = 0.0
+
+            elif calc_mode == "Enter Ream (500 pcs)":
+                input_ream = st.number_input("Reams", min_value=0.0, value=None, placeholder="Enter Reams...", step=0.01, key="pur_ream")
+                if input_ream:
+                    calc_pcs = int(round(input_ream * 500))
+                    calc_grus = calc_pcs / 144.0
+                    calc_weight = (width * length * gsm * calc_pcs) / 1550000.0
+                    st.info(f"💡 Calculated Pcs: `{calc_pcs}` | Gross Equivalent: `{calc_grus:.2f}` | Calculated Weight: `{calc_weight:.3f} kg`")
+                    challan_wt = st.number_input("Challan Weight (kg)", min_value=0.0, value=float(calc_weight), step=0.001, key="pur_cw")
+                    diff_wt = challan_wt - calc_weight
+                    pcs, grus, actual_wt = calc_pcs, calc_grus, calc_weight
+                else:
+                    pcs = grus = actual_wt = challan_wt = diff_wt = 0.0
+
             else:
-                st.write(str(row["Date"]))
+                input_wt = st.number_input("Weight (kg)", min_value=0.0, value=None, placeholder="Enter Weight (kg)...", step=0.1, key="pur_wt")
+                if input_wt:
+                    calc_pcs = int(round((input_wt * 1550000.0) / (width * length * gsm))) if width * length * gsm > 0 else 0
+                    calc_grus = calc_pcs / 144.0
+                    st.info(f"💡 Calculated Pcs: `{calc_pcs}` | Calculated Gross: `{calc_grus:.2f}`")
+                    challan_wt = st.number_input("Challan Weight (kg)", min_value=0.0, value=float(input_wt), step=0.001, key="pur_cw")
+                    diff_wt = challan_wt - input_wt
+                    pcs, grus, actual_wt = calc_pcs, calc_grus, input_wt
+                else:
+                    pcs = grus = actual_wt = challan_wt = diff_wt = 0.0
 
-        with col_inv:
-            st.write(row["Invoice No."])
-        with col_veh:
-            st.write(row["Vehicle No."])
-        with col_driver:
-            st.write(row["Driver"])
-        with col_comp:
-            st.write(row["Company & Location"])
-        with col_act:
-            if st.button("Receive", key=f"btn_recv_{gs_row}"):
-                st.session_state.receive_modal_item = {
-                    "gs_row": gs_row,
-                    "invoice_no": row["Invoice No."],
-                    "company": row["Company & Location"],
+        if pcs > 0:
+            st.write(f"**Summary:** `Diff Weight`: `{diff_wt:.3f} kg`")
+            if st.button("Submit Purchase Entry", type="primary"):
+                params = {
+                    "action": "add_primary_stock",
+                    "date": entry_date.strftime("%d/%m/%Y"),
+                    "product": product,
+                    "width": width,
+                    "length": length,
+                    "gsm": gsm,
+                    "grus_change": grus,
+                    "pcs_change": pcs,
+                    "challan_weight_change": challan_wt,
+                    "weight_change": actual_wt,
+                    "diff_weight_change": diff_wt,
+                    "remark": remark
                 }
+                res = requests.get(WEB_APP_URL, params=params)
+                if res.status_code == 200:
+                    st.success("✅ Primary stock added successfully!")
+                    st.rerun()
+
+# -------------------------------------------------------------------
+# TAB 3: TRANSFER STOCK TO COMPANY
+# -------------------------------------------------------------------
+with main_tab3:
+    st.header("Shift Stock from Primary Warehouse to Company")
+
+    if stock_data and stock_data.get("primary_stock"):
+        df_p_stock = pd.DataFrame(stock_data.get("primary_stock"))
+        selection_res = render_cascading_stock_selector(df_p_stock, key_prefix="tr")
+
+        if selection_res is not None and selection_res["status"] == "existing":
+            selected_item = selection_res["data"]
+            col1, col2 = st.columns(2)
+            with col1:
+                company = st.selectbox("Target Company", ["shivam enterprise", "GIRRAJ PACKAGING"])
+                trans_date = st.date_input("Transfer Date", datetime.now(), key="tr_date")
+                inv_number = st.text_input("Invoice Number", value="", placeholder="Enter Invoice #", key="tr_inv")
+                inv_date = st.date_input("Invoice Date", datetime.now(), key="tr_inv_date")
+
+            with col2:
+                calc_mode_tr = st.radio("Entry Based On:", ["Enter Pieces (Pcs)", "Enter Gross (144 pcs)", "Enter Ream (500 pcs)", "Enter Weight (kg)"], horizontal=True, key="tr_mode")
+                w, l, g = float(selected_item['Width']), float(selected_item['Length']), float(selected_item['GSM'])
+
+                if calc_mode_tr == "Enter Pieces (Pcs)":
+                    shift_pcs = st.number_input("Pcs to Shift", min_value=0, max_value=int(selected_item['Pcs']), value=None, placeholder="Enter Pcs...", step=1, key="tr_pcs")
+                    if shift_pcs:
+                        shift_grus = shift_pcs / 144.0
+                        shift_wt = (w * l * g * shift_pcs) / 1550000.0 if w * l * g > 0 else 0.0
+                        st.info(f"💡 Calculated Gross: `{shift_grus:.2f}` | Calculated Weight: `{shift_wt:.3f} kg`")
+                    else:
+                        shift_pcs = shift_grus = shift_wt = 0.0
+                
+                elif calc_mode_tr == "Enter Gross (144 pcs)":
+                    shift_grus = st.number_input("Gross to Shift", min_value=0.0, max_value=float(selected_item['Grus']), value=None, placeholder="Enter Gross...", step=0.01, key="tr_grus")
+                    if shift_grus:
+                        shift_pcs = int(round(shift_grus * 144))
+                        shift_wt = (w * l * g * shift_pcs) / 1550000.0 if w * l * g > 0 else 0.0
+                        st.info(f"💡 Calculated Pcs: `{shift_pcs}` | Calculated Weight: `{shift_wt:.3f} kg`")
+                    else:
+                        shift_pcs = shift_grus = shift_wt = 0.0
+
+                elif calc_mode_tr == "Enter Ream (500 pcs)":
+                    shift_ream = st.number_input("Reams to Shift", min_value=0.0, value=None, placeholder="Enter Reams...", step=0.01, key="tr_ream")
+                    if shift_ream:
+                        shift_pcs = int(round(shift_ream * 500))
+                        shift_grus = shift_pcs / 144.0
+                        shift_wt = (w * l * g * shift_pcs) / 1550000.0 if w * l * g > 0 else 0.0
+                        st.info(f"💡 Calculated Pcs: `{shift_pcs}` | Calculated Weight: `{shift_wt:.3f} kg`")
+                    else:
+                        shift_pcs = shift_grus = shift_wt = 0.0
+
+                else:
+                    shift_wt = st.number_input("Weight to Shift (kg)", min_value=0.0, value=None, placeholder="Enter Weight (kg)...", step=0.1, key="tr_wt")
+                    if shift_wt:
+                        shift_pcs = int(round((shift_wt * 1550000.0) / (w * l * g))) if w * l * g > 0 else 0
+                        shift_grus = shift_pcs / 144.0
+                        st.info(f"💡 Calculated Pcs: `{shift_pcs}` | Calculated Gross: `{shift_grus:.2f}`")
+                    else:
+                        shift_pcs = shift_grus = shift_wt = 0.0
+
+                challan_wt = st.number_input("Challan Weight (kg)", min_value=0.0, value=float(shift_wt) if shift_wt else None, placeholder="Challan Wt...", step=0.001, key="tr_cw")
+                remark = st.text_input("Transfer Remark", value="", placeholder="Enter Remarks...", key="tr_rem")
+
+            if shift_pcs > 0 and st.button("🚀 Execute Transfer", type="primary"):
+                params = {
+                    "action": "transfer_to_company",
+                    "company_name": company,
+                    "date": trans_date.strftime("%d/%m/%Y"),
+                    "invoice_number": inv_number,
+                    "invoice_date": inv_date.strftime("%d/%m/%Y"),
+                    "product": selected_item['Product'],
+                    "width": w,
+                    "length": l,
+                    "gsm": g,
+                    "grus_change": shift_grus,
+                    "pcs_change": shift_pcs,
+                    "challan_weight_change": challan_wt or shift_wt,
+                    "weight_change": shift_wt,
+                    "diff_weight_change": (challan_wt or shift_wt) - shift_wt,
+                    "remark": remark
+                }
+                res = requests.get(WEB_APP_URL, params=params)
+                if res.status_code == 200:
+                    st.success(f"✅ Transferred stock to {company}!")
+                    st.rerun()
+
+# -------------------------------------------------------------------
+# TAB 4: COMPANY USAGE & ADJUSTMENT
+# -------------------------------------------------------------------
+with main_tab4:
+    st.header("📝 Record Company Stock Usage or Adjustment")
+
+    company = st.selectbox("Select Company Name", ["shivam enterprise", "GIRRAJ PACKAGING"], key="u_comp")
+    target_stock = stock_data.get("stock_shivam", []) if company == "shivam enterprise" else stock_data.get("stock_girraj", [])
+
+    if not target_stock:
+        st.warning(f"No stock records found for {company}.")
+    else:
+        df_c_stock = pd.DataFrame(target_stock)
+        selection_res = render_cascading_stock_selector(df_c_stock, key_prefix="u")
+
+        if selection_res is not None and selection_res["status"] == "existing":
+            selected_item = selection_res["data"]
+            col1, col2 = st.columns(2)
+            with col1:
+                entry_type = st.radio("Action Type", ["Used", "Adjusted"], horizontal=True, key="u_type")
+                usage_date = st.date_input("Date", datetime.now(), key="u_date")
+                remark = st.text_input("Remark", value="", placeholder="Production batch / notes", key="u_rem")
+
+            with col2:
+                calc_mode_u = st.radio("Quantity Input Method:", ["Enter Pieces (Pcs)", "Enter Gross (144 pcs)", "Enter Ream (500 pcs)", "Enter Weight (kg)"], horizontal=True, key="u_mode")
+                w, l, g = float(selected_item['Width']), float(selected_item['Length']), float(selected_item['GSM'])
+
+                if calc_mode_u == "Enter Pieces (Pcs)":
+                    use_pcs = st.number_input("Pcs", min_value=0, value=None, placeholder="Enter Pcs...", step=1, key="u_pcs")
+                    if use_pcs:
+                        use_grus = use_pcs / 144.0
+                        use_wt = (w * l * g * use_pcs) / 1550000.0 if w * l * g > 0 else 0.0
+                        st.info(f"💡 Calculated Gross: `{use_grus:.2f}` | Weight: `{use_wt:.3f} kg`")
+                    else:
+                        use_pcs = use_grus = use_wt = 0.0
+
+                elif calc_mode_u == "Enter Gross (144 pcs)":
+                    use_grus = st.number_input("Gross", min_value=0.0, value=None, placeholder="Enter Gross...", step=0.01, key="u_grus")
+                    if use_grus:
+                        use_pcs = int(round(use_grus * 144))
+                        use_wt = (w * l * g * use_pcs) / 1550000.0 if w * l * g > 0 else 0.0
+                        st.info(f"💡 Calculated Pcs: `{use_pcs}` | Weight: `{use_wt:.3f} kg`")
+                    else:
+                        use_pcs = use_grus = use_wt = 0.0
+
+                elif calc_mode_u == "Enter Ream (500 pcs)":
+                    use_ream = st.number_input("Ream", min_value=0.0, value=None, placeholder="Enter Reams...", step=0.01, key="u_ream")
+                    if use_ream:
+                        use_pcs = int(round(use_ream * 500))
+                        use_grus = use_pcs / 144.0
+                        use_wt = (w * l * g * use_pcs) / 1550000.0 if w * l * g > 0 else 0.0
+                        st.info(f"💡 Calculated Pcs: `{use_pcs}` | Weight: `{use_wt:.3f} kg`")
+                    else:
+                        use_pcs = use_grus = use_wt = 0.0
+
+                else:
+                    use_wt = st.number_input("Weight (kg)", min_value=0.0, value=None, placeholder="Enter Weight (kg)...", step=0.1, key="u_wt")
+                    if use_wt:
+                        use_pcs = int(round((use_wt * 1550000.0) / (w * l * g))) if w * l * g > 0 else 0
+                        use_grus = use_pcs / 144.0
+                        st.info(f"💡 Calculated Pcs: `{use_pcs}` | Gross: `{use_grus:.2f}`")
+                    else:
+                        use_pcs = use_grus = use_wt = 0.0
+
+            if use_pcs > 0 and st.button(f"Submit {entry_type} Entry", type="primary"):
+                params = {
+                    "action": "company_stock_action",
+                    "company_name": company,
+                    "type": entry_type,
+                    "date": usage_date.strftime("%d/%m/%Y"),
+                    "invoice_number": "-",
+                    "invoice_date": "-",
+                    "product": selected_item['Product'],
+                    "width": w,
+                    "length": l,
+                    "gsm": g,
+                    "grus_change": use_grus,
+                    "pcs_change": use_pcs,
+                    "challan_weight_change": use_wt,
+                    "weight_change": use_wt,
+                    "diff_weight_change": 0.0,
+                    "remark": remark
+                }
+                res = requests.get(WEB_APP_URL, params=params)
+                if res.status_code == 200:
+                    st.success(f"✅ Recorded **{entry_type}** entry for {company}!")
+                    st.rerun()
+
+# -------------------------------------------------------------------
+# TAB 5: TRANSPORT & DELIVERIES
+# -------------------------------------------------------------------
+with main_tab5:
+    st.header("🚚 Transport Delivery & Invoice Valuation")
+
+    def update_vehicle_details():
+        sel = st.session_state[f"v_sel_{st.session_state.form_key}"]
+        st.session_state.current_driver = VEHICLE_MASTER[sel]["driver"]
+        st.session_state.current_owner = VEHICLE_MASTER[sel]["owner"]
+        key_suf = st.session_state.form_key
+        st.session_state[f"driver_field_{key_suf}"] = VEHICLE_MASTER[sel]["driver"]
+        st.session_state[f"owner_field_{key_suf}"] = VEHICLE_MASTER[sel]["owner"]
+
+    sub_del_tab1, sub_del_tab2 = st.tabs(["🚚 Delivery Record", "💰 Invoice Value Record"])
+
+    with sub_del_tab1:
+        st.subheader("New Delivery Entry")
+        key_suffix = st.session_state.form_key
+
+        col1, col2 = st.columns(2)
+        with col1:
+            vehicle_selection = st.selectbox(
+                "Vehicle No. *",
+                options=list(VEHICLE_MASTER.keys()),
+                key=f"v_sel_{key_suffix}",
+                on_change=update_vehicle_details,
+            )
+            final_vehicle_no = (
+                st.text_input("Manual Vehicle No. *", key=f"v_manual_{key_suffix}")
+                if vehicle_selection == "Others"
+                else vehicle_selection
+            )
+        with col2:
+            invoice_no = st.text_input(
+                "Invoice Number *",
+                value=st.session_state.current_invoice,
+                key=f"delivery_entry_invoice_field_{key_suffix}",
+            )
+
+        col3, col4 = st.columns(2)
+        with col3:
+            driver_name = st.text_input("Driver", value=st.session_state.current_driver, key=f"driver_field_{key_suffix}")
+        with col4:
+            owner_name = st.text_input("Owner", value=st.session_state.current_owner, key=f"owner_field_{key_suffix}")
+
+        company = st.selectbox("Company & Location *", options=COMPANY_OPTIONS, key=f"delivery_company_{key_suffix}")
+        remark = st.text_area("Remark", key=f"delivery_remark_{key_suffix}")
+        delivery_date = st.date_input("Delivery Date", value=date.today(), key=f"delivery_date_{key_suffix}")
+
+        if st.button("Submit Delivery Log", type="primary"):
+            if vehicle_selection == "Select":
+                st.warning("Please select a Vehicle Number.")
+            elif final_vehicle_no.strip() == "":
+                st.warning("Please enter the Manual Vehicle Number.")
+            elif invoice_no.strip() == "":
+                st.warning("Please enter Invoice Number.")
+            elif company == "Select":
+                st.warning("Please choose a valid Company.")
+            else:
+                del_sheet = connect_delivery_sheet()
+                del_sheet.append_row([
+                    delivery_date.strftime("%d/%m/%Y"),
+                    final_vehicle_no.strip().upper(),
+                    invoice_no.strip(),
+                    driver_name.strip(),
+                    owner_name.strip(),
+                    company.strip(),
+                    "No",
+                    remark.strip(),
+                    "",  # Invoice Link Column
+                    0.0,
+                    0.0,
+                ])
+                fresh_df = load_delivery_data()
+                st.session_state.current_driver = ""
+                st.session_state.current_owner = ""
+                st.session_state.current_invoice = get_next_invoice_number(fresh_df, delivery_date)
+                st.session_state.submit_success = True
+                st.session_state.form_key += 1
                 st.rerun()
 
-# Modal Dialog for Scan Copy Capture / Upload
+    with sub_del_tab2:
+        st.subheader("Invoice Value Calculations (Inv_Value)")
+        key_suffix_fin = st.session_state.form_key
+
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            fin_invoice_no = st.text_input("Invoice Number *", value=st.session_state.current_invoice, key=f"fin_invoice_field_{key_suffix_fin}")
+        with col_f2:
+            fin_company = st.selectbox("Company *", options=COMPANY_OPTIONS, key=f"fin_company_{key_suffix_fin}")
+
+        fin_date = st.date_input("Invoice Date", value=date.today(), key=f"fin_date_{key_suffix_fin}")
+
+        col_tax, col_round = st.columns(2)
+        with col_tax:
+            taxable_value = st.number_input("Enter Taxable Value *", min_value=0.0, value=0.0, step=100.0, format="%.2f", key=f"fin_taxable_{key_suffix_fin}")
+        with col_round:
+            round_off = st.number_input("Round Up/Off (+/-)", value=0.0, step=0.01, format="%.2f", key=f"fin_round_{key_suffix_fin}")
+
+        sgst_val = round(taxable_value * 0.025, 2)
+        cgst_val = round(taxable_value * 0.025, 2)
+        total_gst = sgst_val + cgst_val
+        total_value = round(taxable_value + total_gst + round_off, 2)
+
+        st.markdown("### 📊 Live Tax Calculation Breakdown")
+        c_m1, c_m2, c_m3 = st.columns(3)
+        c_m1.metric("SGST (2.5%)", f"₹ {sgst_val:,.2f}")
+        c_m2.metric("CGST (2.5%)", f"₹ {cgst_val:,.2f}")
+        c_m3.metric("Total GST (5%)", f"₹ {total_gst:,.2f}")
+
+        st.metric("📦 Final Total Value (Taxable + GST + Round Off)", f"₹ {total_value:,.2f}")
+
+        if st.button("Submit Financial Value Log", type="primary"):
+            if fin_company == "Select":
+                st.warning("Please choose a valid Company.")
+            elif taxable_value <= 0.0:
+                st.warning("Taxable Value must be greater than zero.")
+            elif fin_invoice_no.strip() == "":
+                st.warning("Please ensure Invoice Number is not empty.")
+            else:
+                inv_sheet = connect_invoice_value_sheet()
+                inv_sheet.append_row([
+                    fin_date.strftime("%d/%m/%Y"),
+                    fin_company.strip(),
+                    fin_invoice_no.strip(),
+                    round(taxable_value, 2),
+                    round(sgst_val, 2),
+                    round(cgst_val, 2),
+                    round(total_gst, 2),
+                    round(round_off, 2),
+                    round(total_value, 2),
+                ])
+                fresh_df = load_delivery_data()
+                st.session_state.current_invoice = get_next_invoice_number(fresh_df, fin_date)
+                st.session_state.submit_success = True
+                st.session_state.form_key += 1
+                st.rerun()
+
+    # ======================================================
+    # Pending Deliveries & Scan Copy Modal
+    # ======================================================
+    st.markdown("---")
+    st.subheader("📋 Pending Deliveries (Not Received)")
+    
+    pending_df = delivery_df[delivery_df["Invoice Received"].str.strip().str.lower() == "no"]
+
+    if pending_df.empty:
+        st.info("🎉 All deliveries have been successfully received!")
+    else:
+        col_h1, col_h2, col_h3, col_h4, col_h5, col_h6 = st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
+        with col_h1: st.markdown("**Date**")
+        with col_h2: st.markdown("**Invoice No.**")
+        with col_h3: st.markdown("**Vehicle No.**")
+        with col_h4: st.markdown("**Driver**")
+        with col_h5: st.markdown("**Company & Location**")
+        with col_h6: st.markdown("**Action**")
+        st.markdown("---")
+
+        for idx, row in pending_df.iterrows():
+            gs_row = idx + 2
+            col_date, col_inv, col_veh, col_driver, col_comp, col_act = st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
+
+            with col_date:
+                if isinstance(row["Date"], pd.Timestamp) or hasattr(row["Date"], "strftime"):
+                    st.write(row["Date"].strftime("%d/%m/%Y"))
+                else:
+                    st.write(str(row["Date"]))
+
+            with col_inv: st.write(row["Invoice No."])
+            with col_veh: st.write(row["Vehicle No."])
+            with col_driver: st.write(row["Driver"])
+            with col_comp: st.write(row["Company & Location"])
+            with col_act:
+                if st.button("Receive", key=f"btn_recv_{gs_row}"):
+                    st.session_state.receive_modal_item = {
+                        "gs_row": gs_row,
+                        "invoice_no": row["Invoice No."],
+                        "company": row["Company & Location"],
+                    }
+                    st.rerun()
+
+# ======================================================
+# Upload Modal Window Definition
+# ======================================================
 if st.session_state.receive_modal_item is not None:
     item = st.session_state.receive_modal_item
 
-    # Standard Streamlit Dialog window
     @st.dialog("📸 Upload Scanned Invoice Copy")
     def open_receive_modal():
         st.write(f"**Invoice No:** `{item['invoice_no']}`")
@@ -942,9 +1291,7 @@ if st.session_state.receive_modal_item is not None:
         if input_mode == "📷 Camera Capture":
             file_data = st.camera_input("Take Invoice Photo")
         else:
-            file_data = st.file_uploader(
-                "Choose Invoice Image/PDF", type=["png", "jpg", "jpeg", "pdf"]
-            )
+            file_data = st.file_uploader("Choose Invoice Image/PDF", type=["png", "jpg", "jpeg", "pdf"])
 
         col_m1, col_m2 = st.columns(2)
         with col_m1:
@@ -952,45 +1299,28 @@ if st.session_state.receive_modal_item is not None:
                 if file_data is None:
                     st.warning("Please upload or capture an image first.")
                 else:
-                    with st.spinner(
-                        "Uploading to Google Drive & Updating Sheet..."
-                    ):
-                        bytes_content = file_data.getvalue()
+                    with st.spinner("Uploading scan to Google Drive & updating sheet..."):
+                        raw_filename = getattr(file_data, "name", "scan.png")
+                        ext = raw_filename.split(".")[-1] if "." in raw_filename else "png"
                         filename_clean = item["invoice_no"].replace("/", "_")
-                        ext = (
-                            file_data.name.split(".")[-1]
-                            if hasattr(file_data, "name")
-                            and "." in file_data.name
-                            else "png"
-                        )
                         file_name = f"{filename_clean}_Scan.{ext}"
-                        mime_type = getattr(
-                            file_data, "type", "image/png"
-                        ) or "image/png"
+                        mime_type = getattr(file_data, "type", None) or "image/png"
 
-                        # 1. Upload scan to Drive
                         drive_link = upload_scan_to_drive(
-                            bytes_content,
+                            file_data,
                             file_name,
                             mime_type,
                             item["company"],
                         )
 
-                        # 2. Update Google Sheet: Col 7 ('Invoice Received') = 'Yes', Col 9 ('Invoice Link') = Drive Link
-                        delivery_sheet.update_cell(item["gs_row"], 7, "Yes")
-                        delivery_sheet.update_cell(
-                            item["gs_row"], 9, drive_link
-                        )
+                        del_sheet = connect_delivery_sheet()
+                        del_sheet.update_cell(item["gs_row"], 7, "Yes")
+                        del_sheet.update_cell(item["gs_row"], 9, drive_link)
 
-                        # 3. Refresh State
-                        st.cache_data.clear()
-                        fresh_df = load_delivery_data()
-                        st.session_state.current_invoice = (
-                            get_next_invoice_number(fresh_df)
-                        )
                         st.session_state.submit_success = True
                         st.session_state.receive_modal_item = None
                         st.rerun()
+
         with col_m2:
             if st.button("Cancel"):
                 st.session_state.receive_modal_item = None
