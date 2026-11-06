@@ -8,6 +8,7 @@ from io import BytesIO
 from datetime import date
 import datetime
 import math
+import io
 import re
 import numpy as np
 import requests
