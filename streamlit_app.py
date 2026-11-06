@@ -1327,7 +1327,6 @@ if st.session_state.receive_modal_item is not None:
                 st.rerun()
 
     open_receive_modal()
-
 # ======================================================
 # UI Section: Post-Submission Loading / Unloading Charges
 # ======================================================
