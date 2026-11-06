@@ -14,6 +14,7 @@ import numpy as np
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import base64
 
 st.set_page_config(page_title="GIRRAJ PACKAGING", layout="wide")
 
@@ -399,10 +400,20 @@ st.download_button(
 # Transport Record Section
 # ======================================================
 
+st.set_page_config(
+    page_title="Transport & Delivery Management", page_icon="🚚", layout="wide"
+)
+
+st.title("🚚 Transport & Invoice Management Dashboard")
+
+# Google Apps Script Web App Endpoint for File Uploads
+WEB_APP_URL = "https://script.google.com/macros/s/YOUR_APPS_SCRIPT_DEPLOYMENT_ID/exec"
+SPREADSHEET_ID = "YOUR_GOOGLE_SPREADSHEET_ID_HERE"
+
 WORKSHEET_NAME2 = "Delivery_Record"
 WORKSHEET_NAME3 = "Inv_Value"
 
-# Added 'Invoice Link' right after 'Remark' (Column 9)
+# Col 9 is 'Invoice Link' (stores Google Drive view link)
 COLUMNS2 = [
     "Date",
     "Vehicle No.",
@@ -454,12 +465,11 @@ VEHICLE_MASTER = {
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
-    "https://www.googleapis.com/auth/drive",
 ]
 
 
 # ======================================================
-# Cached Database & Drive Connectors
+# Database Connectors (gspread)
 # ======================================================
 @st.cache_resource(ttl=3600)
 def connect_delivery_sheet():
@@ -479,81 +489,48 @@ def connect_invoice_value_sheet():
     return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME3)
 
 
-@st.cache_resource(ttl=3600)
-def get_drive_service():
-    creds = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"], scopes=SCOPES
-    )
-    return build("drive", "v3", credentials=creds)
-
-
 delivery_sheet = connect_delivery_sheet()
 inv_value_sheet = connect_invoice_value_sheet()
 
 
 # ======================================================
-# Google Drive Folder & File Upload Helper Logic
+# Apps Script Upload Helper
 # ======================================================
-def get_or_create_drive_folder(service, folder_name, parent_id=None):
-    query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
-    if parent_id:
-        query += f" and '{parent_id}' in parents"
+def upload_scan_to_drive_via_appscript(
+    file_bytes, file_name, mime_type, company_name
+):
+    """Sends file bytes to Google Apps Script Web App to upload into Google Drive under personal user quota."""
+    encoded_file = base64.b64encode(file_bytes).decode("utf-8")
 
-    results = service.files().list(q=query, fields="files(id, name)").execute()
-    items = results.get("files", [])
+    payload = {
+        "action": "upload_invoice",
+        "company": company_name.strip(),
+        "fileName": file_name,
+        "mimeType": mime_type,
+        "fileData": encoded_file,
+    }
 
-    if items:
-        return items[0]["id"]
-    else:
-        folder_metadata = {
-            "name": folder_name,
-            "mimeType": "application/vnd.google-apps.folder",
-        }
-        if parent_id:
-            folder_metadata["parents"] = [parent_id]
-        folder = (
-            service.files().create(body=folder_metadata, fields="id").execute()
-        )
-        return folder.get("id")
-
-
-def upload_scan_to_drive(file_bytes, file_name, mime_type, company_name):
-    service = get_drive_service()
-
-    # 1. Root folder: receive invoice
-    root_folder_id = get_or_create_drive_folder(service, "receive invoice")
-
-    # 2. Company Subfolder
-    clean_company = company_name.strip()
-    company_folder_id = get_or_create_drive_folder(
-        service, clean_company, parent_id=root_folder_id
-    )
-
-    # 3. Upload File
-    media = MediaIoBaseUpload(
-        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
-    )
-    file_metadata = {"name": file_name, "parents": [company_folder_id]}
-    file = (
-        service.files()
-        .create(body=file_metadata, media_body=media, fields="id, webViewLink")
-        .execute()
-    )
-
-    # 4. Set Permission so link is accessible
     try:
-        permission = {"type": "anyone", "role": "reader"}
-        service.permissions().create(
-            fileId=file.get("id"), body=permission
-        ).execute()
-    except Exception:
-        pass
-
-    return file.get("webViewLink", "")
+        response = requests.post(WEB_APP_URL, json=payload, timeout=30)
+        if response.status_code == 200:
+            res_json = response.json()
+            if res_json.get("status") == "success":
+                return res_json.get("link", "")
+            else:
+                st.error(
+                    f"Apps Script Error: {res_json.get('message', 'Unknown error')}"
+                )
+        else:
+            st.error(
+                f"HTTP Error {response.status_code}: Could not reach Apps Script Endpoint."
+            )
+    except Exception as e:
+        st.error(f"Failed to connect to Apps Script: {e}")
+    return None
 
 
 # ======================================================
-# Data Loaders
+# Data Loader Functions
 # ======================================================
 def load_delivery_data():
     raw_data = delivery_sheet.get_all_values()
@@ -606,7 +583,7 @@ inv_value_df = load_invoice_value_data()
 
 
 # ======================================================
-# Auto-Increment Sequence Logic
+# Auto-Increment Invoice Logic (GP/number/FY)
 # ======================================================
 def get_financial_year(target_date=None):
     if target_date is None:
@@ -669,7 +646,7 @@ if "receive_modal_item" not in st.session_state:
     st.session_state.receive_modal_item = None
 
 if st.session_state.submit_success:
-    st.success("✅ Log Entry Appended Successfully")
+    st.success("✅ Operation completed successfully!")
     st.session_state.submit_success = False
 
 
@@ -685,7 +662,7 @@ def update_vehicle_details():
 
 
 # ======================================================
-# Tab Layout Organization
+# App Tabs
 # ======================================================
 tab1, tab2 = st.tabs(["🚚 Delivery Record", "💰 Invoice Value Record"])
 
@@ -749,7 +726,7 @@ with tab1:
         elif company == "Select":
             st.warning("Please choose a valid Company.")
         else:
-            # 11-column alignment matching COLUMNS2 (including empty Invoice Link)
+            # 11-column alignment matching COLUMNS2
             delivery_sheet.append_row([
                 delivery_date.strftime("%d/%m/%Y"),
                 final_vehicle_no.strip().upper(),
@@ -817,10 +794,8 @@ with tab2:
             key=f"fin_round_{key_suffix_fin}",
         )
 
-    sgst_raw = taxable_value * 0.025
-    cgst_raw = taxable_value * 0.025
-    sgst_val = round(sgst_raw, 2)
-    cgst_val = round(cgst_raw, 2)
+    sgst_val = round(taxable_value * 0.025, 2)
+    cgst_val = round(taxable_value * 0.025, 2)
     total_gst = sgst_val + cgst_val
     total_value = round(taxable_value + total_gst + round_off, 2)
 
@@ -864,7 +839,7 @@ with tab2:
             st.rerun()
 
 # ======================================================
-# UI Section: Pending Deliveries Management & Upload Modal
+# UI Section: Pending Deliveries Management
 # ======================================================
 st.markdown("---")
 st.subheader("📋 Pending Deliveries (Not Received)")
@@ -915,7 +890,7 @@ else:
         with col_comp:
             st.write(row["Company & Location"])
         with col_act:
-            if st.button("Receive", key=f"btn_recv_{gs_row}"):
+            if st.button("Receive 📩", key=f"btn_recv_{gs_row}"):
                 st.session_state.receive_modal_item = {
                     "gs_row": gs_row,
                     "invoice_no": row["Invoice No."],
@@ -923,11 +898,10 @@ else:
                 }
                 st.rerun()
 
-# Modal Dialog for Scan Copy Capture / Upload
+# Modal Dialog for Uploading Scanned Invoice
 if st.session_state.receive_modal_item is not None:
     item = st.session_state.receive_modal_item
 
-    # Standard Streamlit Dialog window
     @st.dialog("📸 Upload Scanned Invoice Copy")
     def open_receive_modal():
         st.write(f"**Invoice No:** `{item['invoice_no']}`")
@@ -965,33 +939,36 @@ if st.session_state.receive_modal_item is not None:
                             else "png"
                         )
                         file_name = f"{filename_clean}_Scan.{ext}"
-                        mime_type = getattr(
-                            file_data, "type", "image/png"
-                        ) or "image/png"
+                        mime_type = (
+                            getattr(file_data, "type", "image/png")
+                            or "image/png"
+                        )
 
-                        # 1. Upload scan to Drive
-                        drive_link = upload_scan_to_drive(
+                        # 1. Upload scan via Apps Script endpoint
+                        drive_link = upload_scan_to_drive_via_appscript(
                             bytes_content,
                             file_name,
                             mime_type,
                             item["company"],
                         )
 
-                        # 2. Update Google Sheet: Col 7 ('Invoice Received') = 'Yes', Col 9 ('Invoice Link') = Drive Link
-                        delivery_sheet.update_cell(item["gs_row"], 7, "Yes")
-                        delivery_sheet.update_cell(
-                            item["gs_row"], 9, drive_link
-                        )
+                        if drive_link:
+                            # 2. Update Sheet: Col 7 ('Invoice Received') = 'Yes', Col 9 ('Invoice Link') = drive_link
+                            delivery_sheet.update_cell(item["gs_row"], 7, "Yes")
+                            delivery_sheet.update_cell(
+                                item["gs_row"], 9, drive_link
+                            )
 
-                        # 3. Refresh State
-                        st.cache_data.clear()
-                        fresh_df = load_delivery_data()
-                        st.session_state.current_invoice = (
-                            get_next_invoice_number(fresh_df)
-                        )
-                        st.session_state.submit_success = True
-                        st.session_state.receive_modal_item = None
-                        st.rerun()
+                            # 3. Reset Session & Rerun
+                            st.cache_data.clear()
+                            fresh_df = load_delivery_data()
+                            st.session_state.current_invoice = (
+                                get_next_invoice_number(fresh_df)
+                            )
+                            st.session_state.submit_success = True
+                            st.session_state.receive_modal_item = None
+                            st.rerun()
+
         with col_m2:
             if st.button("Cancel"):
                 st.session_state.receive_modal_item = None
