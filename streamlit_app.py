@@ -399,12 +399,10 @@ st.download_button(
 # Transport Record Section
 # ======================================================
 
-SPREADSHEET_ID = st.secrets.get("SPREADSHEET_ID", "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg")
-
 WORKSHEET_NAME2 = "Delivery_Record"
 WORKSHEET_NAME3 = "Inv_Value"
 
-# 11 Columns (Invoice Link at Column 9, right after Remark)
+# Added 'Invoice Link' right after 'Remark' (Column 9)
 COLUMNS2 = [
     "Date",
     "Vehicle No.",
@@ -519,7 +517,7 @@ def get_or_create_drive_folder(service, folder_name, parent_id=None):
         return folder.get("id")
 
 
-def upload_scan_to_drive(file_input, file_name, mime_type, company_name):
+def upload_scan_to_drive(file_bytes, file_name, mime_type, company_name):
     service = get_drive_service()
 
     # 1. Root folder: receive invoice
@@ -531,19 +529,10 @@ def upload_scan_to_drive(file_input, file_name, mime_type, company_name):
         service, clean_company, parent_id=root_folder_id
     )
 
-    # 3. Stream object conversion handling for raw bytes, UploadedFile, or CameraInput
-    if isinstance(file_input, bytes):
-        stream = io.BytesIO(file_input)
-    elif hasattr(file_input, "getvalue"):
-        stream = io.BytesIO(file_input.getvalue())
-    elif hasattr(file_input, "read"):
-        file_input.seek(0)
-        stream = file_input
-    else:
-        stream = io.BytesIO(file_input)
-
-    # 4. Upload File
-    media = MediaIoBaseUpload(stream, mimetype=mime_type, resumable=True)
+    # 3. Upload File
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
+    )
     file_metadata = {"name": file_name, "parents": [company_folder_id]}
     file = (
         service.files()
@@ -551,7 +540,7 @@ def upload_scan_to_drive(file_input, file_name, mime_type, company_name):
         .execute()
     )
 
-    # 5. Public read permissions for direct file link access
+    # 4. Set Permission so link is accessible
     try:
         permission = {"type": "anyone", "role": "reader"}
         service.permissions().create(
@@ -760,7 +749,7 @@ with tab1:
         elif company == "Select":
             st.warning("Please choose a valid Company.")
         else:
-            # 11-column row entry matching COLUMNS2
+            # 11-column alignment matching COLUMNS2 (including empty Invoice Link)
             delivery_sheet.append_row([
                 delivery_date.strftime("%d/%m/%Y"),
                 final_vehicle_no.strip().upper(),
@@ -770,7 +759,7 @@ with tab1:
                 company.strip(),
                 "No",
                 remark.strip(),
-                "",  # Col 9: Invoice Link (populated on receipt)
+                "",  # Col 9: Invoice Link (populated upon receive)
                 0.0,
                 0.0,
             ])
@@ -938,6 +927,7 @@ else:
 if st.session_state.receive_modal_item is not None:
     item = st.session_state.receive_modal_item
 
+    # Standard Streamlit Dialog window
     @st.dialog("📸 Upload Scanned Invoice Copy")
     def open_receive_modal():
         st.write(f"**Invoice No:** `{item['invoice_no']}`")
@@ -963,20 +953,25 @@ if st.session_state.receive_modal_item is not None:
                 if file_data is None:
                     st.warning("Please upload or capture an image first.")
                 else:
-                    with st.spinner("Uploading to Google Drive & Updating Sheet..."):
-                        raw_filename = getattr(file_data, "name", "scan.png")
+                    with st.spinner(
+                        "Uploading to Google Drive & Updating Sheet..."
+                    ):
+                        bytes_content = file_data.getvalue()
+                        filename_clean = item["invoice_no"].replace("/", "_")
                         ext = (
-                            raw_filename.split(".")[-1]
-                            if "." in raw_filename
+                            file_data.name.split(".")[-1]
+                            if hasattr(file_data, "name")
+                            and "." in file_data.name
                             else "png"
                         )
-                        filename_clean = item["invoice_no"].replace("/", "_")
                         file_name = f"{filename_clean}_Scan.{ext}"
-                        mime_type = getattr(file_data, "type", None) or "image/png"
+                        mime_type = getattr(
+                            file_data, "type", "image/png"
+                        ) or "image/png"
 
-                        # 1. Upload scan to Google Drive
+                        # 1. Upload scan to Drive
                         drive_link = upload_scan_to_drive(
-                            file_data,
+                            bytes_content,
                             file_name,
                             mime_type,
                             item["company"],
@@ -988,7 +983,7 @@ if st.session_state.receive_modal_item is not None:
                             item["gs_row"], 9, drive_link
                         )
 
-                        # 3. Clear cache and trigger UI rerun
+                        # 3. Refresh State
                         st.cache_data.clear()
                         fresh_df = load_delivery_data()
                         st.session_state.current_invoice = (
@@ -997,13 +992,13 @@ if st.session_state.receive_modal_item is not None:
                         st.session_state.submit_success = True
                         st.session_state.receive_modal_item = None
                         st.rerun()
-
         with col_m2:
             if st.button("Cancel"):
                 st.session_state.receive_modal_item = None
                 st.rerun()
 
     open_receive_modal()
+    
 # ======================================================
 # UI Section: Post-Submission Loading / Unloading Charges
 # ======================================================
