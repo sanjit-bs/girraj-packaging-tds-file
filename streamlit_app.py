@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseUpload
 from io import BytesIO
 from datetime import date
 import datetime
@@ -399,6 +401,7 @@ st.download_button(
 WORKSHEET_NAME2 = "Delivery_Record"
 WORKSHEET_NAME3 = "Inv_Value"
 
+# Added 'Invoice Link' right after 'Remark' (Column 9)
 COLUMNS2 = [
     "Date",
     "Vehicle No.",
@@ -408,6 +411,7 @@ COLUMNS2 = [
     "Company & Location",
     "Invoice Received",
     "Remark",
+    "Invoice Link",
     "Loading Charge",
     "Unloading Charge",
 ]
@@ -447,9 +451,14 @@ VEHICLE_MASTER = {
     "Others": {"driver": "", "owner": ""},
 }
 
+SCOPES = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive",
+]
+
 
 # ======================================================
-# Cached Database Connectors
+# Cached Database & Drive Connectors
 # ======================================================
 @st.cache_resource(ttl=3600)
 def connect_delivery_sheet():
@@ -469,11 +478,82 @@ def connect_invoice_value_sheet():
     return client.open_by_key(SPREADSHEET_ID).worksheet(WORKSHEET_NAME3)
 
 
+@st.cache_resource(ttl=3600)
+def get_drive_service():
+    creds = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"], scopes=SCOPES
+    )
+    return build("drive", "v3", credentials=creds)
+
+
 delivery_sheet = connect_delivery_sheet()
 inv_value_sheet = connect_invoice_value_sheet()
 
 
-#@st.cache_data(ttl=10)
+# ======================================================
+# Google Drive Folder & File Upload Helper Logic
+# ======================================================
+def get_or_create_drive_folder(service, folder_name, parent_id=None):
+    query = f"name = '{folder_name}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+    if parent_id:
+        query += f" and '{parent_id}' in parents"
+
+    results = service.files().list(q=query, fields="files(id, name)").execute()
+    items = results.get("files", [])
+
+    if items:
+        return items[0]["id"]
+    else:
+        folder_metadata = {
+            "name": folder_name,
+            "mimeType": "application/vnd.google-apps.folder",
+        }
+        if parent_id:
+            folder_metadata["parents"] = [parent_id]
+        folder = (
+            service.files().create(body=folder_metadata, fields="id").execute()
+        )
+        return folder.get("id")
+
+
+def upload_scan_to_drive(file_bytes, file_name, mime_type, company_name):
+    service = get_drive_service()
+
+    # 1. Root folder: receive invoice
+    root_folder_id = get_or_create_drive_folder(service, "receive invoice")
+
+    # 2. Company Subfolder
+    clean_company = company_name.strip()
+    company_folder_id = get_or_create_drive_folder(
+        service, clean_company, parent_id=root_folder_id
+    )
+
+    # 3. Upload File
+    media = MediaIoBaseUpload(
+        io.BytesIO(file_bytes), mimetype=mime_type, resumable=True
+    )
+    file_metadata = {"name": file_name, "parents": [company_folder_id]}
+    file = (
+        service.files()
+        .create(body=file_metadata, media_body=media, fields="id, webViewLink")
+        .execute()
+    )
+
+    # 4. Set Permission so link is accessible
+    try:
+        permission = {"type": "anyone", "role": "reader"}
+        service.permissions().create(
+            fileId=file.get("id"), body=permission
+        ).execute()
+    except Exception:
+        pass
+
+    return file.get("webViewLink", "")
+
+
+# ======================================================
+# Data Loaders
+# ======================================================
 def load_delivery_data():
     raw_data = delivery_sheet.get_all_values()
     if not raw_data or len(raw_data) < 2:
@@ -496,6 +576,7 @@ def load_delivery_data():
         "Company & Location",
         "Invoice Received",
         "Remark",
+        "Invoice Link",
     ]
     for col in text_cols:
         df[col] = df[col].astype(str).str.strip()
@@ -503,7 +584,6 @@ def load_delivery_data():
     return df
 
 
-#@st.cache_data(ttl=10)
 def load_invoice_value_data():
     raw_data = inv_value_sheet.get_all_values()
     if not raw_data or len(raw_data) < 2:
@@ -525,7 +605,7 @@ inv_value_df = load_invoice_value_data()
 
 
 # ======================================================
-# Auto-Increment Sequence Logic (Structured: GP/inv. no./FY)
+# Auto-Increment Sequence Logic
 # ======================================================
 def get_financial_year(target_date=None):
     if target_date is None:
@@ -584,6 +664,8 @@ if "current_owner" not in st.session_state:
     st.session_state.current_owner = ""
 if "current_invoice" not in st.session_state:
     st.session_state.current_invoice = suggested_next_invoice
+if "receive_modal_item" not in st.session_state:
+    st.session_state.receive_modal_item = None
 
 if st.session_state.submit_success:
     st.success("✅ Log Entry Appended Successfully")
@@ -666,7 +748,7 @@ with tab1:
         elif company == "Select":
             st.warning("Please choose a valid Company.")
         else:
-            # Full 10-column alignment matching COLUMNS2
+            # 11-column alignment matching COLUMNS2 (including empty Invoice Link)
             delivery_sheet.append_row([
                 delivery_date.strftime("%d/%m/%Y"),
                 final_vehicle_no.strip().upper(),
@@ -676,6 +758,7 @@ with tab1:
                 company.strip(),
                 "No",
                 remark.strip(),
+                "",  # Col 9: Invoice Link (populated upon receive)
                 0.0,
                 0.0,
             ])
@@ -780,7 +863,7 @@ with tab2:
             st.rerun()
 
 # ======================================================
-# UI Section: Pending Deliveries Management
+# UI Section: Pending Deliveries Management & Upload Modal
 # ======================================================
 st.markdown("---")
 st.subheader("📋 Pending Deliveries (Not Received)")
@@ -810,8 +893,8 @@ else:
 
     for idx, row in pending_df.iterrows():
         gs_row = idx + 2
-        col_date, col_inv, col_veh, col_driver, col_comp, col_act = (
-            st.columns([1.2, 1.5, 1.5, 1.5, 2.5, 1])
+        col_date, col_inv, col_veh, col_driver, col_comp, col_act = st.columns(
+            [1.2, 1.5, 1.5, 1.5, 2.5, 1]
         )
 
         with col_date:
@@ -831,15 +914,89 @@ else:
         with col_comp:
             st.write(row["Company & Location"])
         with col_act:
-            if st.checkbox("Receive", key=f"recv_approval_act_{gs_row}"):
-                delivery_sheet.update_cell(gs_row, 7, "Yes")
-                st.cache_data.clear()
-                fresh_df = load_delivery_data()
-                st.session_state.current_invoice = get_next_invoice_number(
-                    fresh_df
-                )
-                st.session_state.submit_success = True
+            if st.button("Receive", key=f"btn_recv_{gs_row}"):
+                st.session_state.receive_modal_item = {
+                    "gs_row": gs_row,
+                    "invoice_no": row["Invoice No."],
+                    "company": row["Company & Location"],
+                }
                 st.rerun()
+
+# Modal Dialog for Scan Copy Capture / Upload
+if st.session_state.receive_modal_item is not None:
+    item = st.session_state.receive_modal_item
+
+    # Standard Streamlit Dialog window
+    @st.dialog("📸 Upload Scanned Invoice Copy")
+    def open_receive_modal():
+        st.write(f"**Invoice No:** `{item['invoice_no']}`")
+        st.write(f"**Company:** `{item['company']}`")
+
+        input_mode = st.radio(
+            "Select Scan Input Method",
+            ["📷 Camera Capture", "📁 Upload File from Device"],
+            horizontal=True,
+        )
+
+        file_data = None
+        if input_mode == "📷 Camera Capture":
+            file_data = st.camera_input("Take Invoice Photo")
+        else:
+            file_data = st.file_uploader(
+                "Choose Invoice Image/PDF", type=["png", "jpg", "jpeg", "pdf"]
+            )
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            if st.button("Confirm & Upload to Drive", type="primary"):
+                if file_data is None:
+                    st.warning("Please upload or capture an image first.")
+                else:
+                    with st.spinner(
+                        "Uploading to Google Drive & Updating Sheet..."
+                    ):
+                        bytes_content = file_data.getvalue()
+                        filename_clean = item["invoice_no"].replace("/", "_")
+                        ext = (
+                            file_data.name.split(".")[-1]
+                            if hasattr(file_data, "name")
+                            and "." in file_data.name
+                            else "png"
+                        )
+                        file_name = f"{filename_clean}_Scan.{ext}"
+                        mime_type = getattr(
+                            file_data, "type", "image/png"
+                        ) or "image/png"
+
+                        # 1. Upload scan to Drive
+                        drive_link = upload_scan_to_drive(
+                            bytes_content,
+                            file_name,
+                            mime_type,
+                            item["company"],
+                        )
+
+                        # 2. Update Google Sheet: Col 7 ('Invoice Received') = 'Yes', Col 9 ('Invoice Link') = Drive Link
+                        delivery_sheet.update_cell(item["gs_row"], 7, "Yes")
+                        delivery_sheet.update_cell(
+                            item["gs_row"], 9, drive_link
+                        )
+
+                        # 3. Refresh State
+                        st.cache_data.clear()
+                        fresh_df = load_delivery_data()
+                        st.session_state.current_invoice = (
+                            get_next_invoice_number(fresh_df)
+                        )
+                        st.session_state.submit_success = True
+                        st.session_state.receive_modal_item = None
+                        st.rerun()
+        with col_m2:
+            if st.button("Cancel"):
+                st.session_state.receive_modal_item = None
+                st.rerun()
+
+    open_receive_modal()
 
 # ======================================================
 # UI Section: Post-Submission Loading / Unloading Charges
