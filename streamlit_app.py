@@ -407,8 +407,8 @@ st.set_page_config(
 st.title("🚚 Transport & Invoice Management Dashboard")
 
 # Google Apps Script Web App Endpoint for File Uploads
-WEB_APP_URL = "https://script.google.com/macros/s/YOUR_APPS_SCRIPT_DEPLOYMENT_ID/exec"
-SPREADSHEET_ID = "YOUR_GOOGLE_SPREADSHEET_ID_HERE"
+WEB_APP_URL = "https://script.google.com/macros/s/AKfycbwOwMTFFshy1dI5-7JiDD_tKQFSd2-1BDAMXap_HScvLTnJpSVIujU3NMInTkn1Q9m92g/exec"
+SPREADSHEET_ID = "1PCJ3BWAj6Wz1N-55XpuWltvfvYd7KD1q194D3N7MzIg"
 
 WORKSHEET_NAME2 = "Delivery_Record"
 WORKSHEET_NAME3 = "Inv_Value"
