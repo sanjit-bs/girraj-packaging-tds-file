@@ -111,7 +111,7 @@ if st.session_state.submit_success:
 
 payee_list = [
     "PILU MRIDHA",
-    "TOTON SARKAR",
+    "TATON SARKAR",
     "DEBABRATA BISWAS"
 ]
 
